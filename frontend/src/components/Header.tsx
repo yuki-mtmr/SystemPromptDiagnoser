@@ -13,7 +13,7 @@ export const Header: React.FC = () => {
     }}>
       <div className="container" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h1 style={{ margin: 0, fontSize: '1.5rem', background: 'linear-gradient(to right, #38bdf8, #818cf8)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-          System Prompt Diagnoser
+          システムプロンプト診断
         </h1>
         <nav>
           {/* Future nav items */}

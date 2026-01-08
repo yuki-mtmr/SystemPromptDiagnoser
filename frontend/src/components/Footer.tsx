@@ -11,7 +11,7 @@ export const Footer: React.FC = () => {
       fontSize: '0.875rem'
     }}>
       <div className="container">
-        <p>&copy; {new Date().getFullYear()} System Prompt Diagnoser. All rights reserved.</p>
+        <p>&copy; {new Date().getFullYear()} システムプロンプト診断. All rights reserved.</p>
       </div>
     </footer>
   );
