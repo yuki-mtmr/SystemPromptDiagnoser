@@ -1,35 +1,27 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import { Header } from './components/Header';
+import { Footer } from './components/Footer';
+import { Questionnaire } from './components/Questionnaire';
+import './App.css'; 
 
 function App() {
-  const [count, setCount] = useState(0)
-
   return (
     <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
+      <Header />
+      <main className="container" style={{ flex: 1, padding: '2rem 1rem' }}>
+        <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
+          <h2 style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>
+            Uncover Your Ideal <span style={{ color: 'var(--color-accent)' }}>System Prompt</span>
+          </h2>
+          <p style={{ fontSize: '1.125rem', color: 'var(--color-text-secondary)', maxWidth: '600px', margin: '0 auto' }}>
+            Stop wrestling with generic prompts. Get a scientifically personalized system prompt tailored to your communication style.
+          </p>
+        </div>
+        
+        <Questionnaire />
+      </main>
+      <Footer />
     </>
-  )
+  );
 }
 
-export default App
+export default App;
