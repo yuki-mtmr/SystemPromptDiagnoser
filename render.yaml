@@ -13,7 +13,7 @@ services:
     healthCheckPath: /health
     envVars:
       - key: PYTHON_VERSION
-        value: "3.11"
+        value: "3.11.0"
       - key: ENV
         value: production
     # Note: No GEMINI_API_KEY needed - users provide their own via X-API-Key header
