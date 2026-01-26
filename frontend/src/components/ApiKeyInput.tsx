@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 
-const API_KEY_STORAGE_KEY = 'gemini_api_key';
+const API_KEY_STORAGE_KEY = 'llm_api_key';
 
 interface ApiKeyInputProps {
   onApiKeyChange: (hasKey: boolean) => void;
@@ -81,7 +81,7 @@ export function ApiKeyInput({ onApiKeyChange }: ApiKeyInputProps) {
             <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" />
           </svg>
           <span style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>
-            Gemini API Key:
+            Groq API Key:
           </span>
         </div>
 
@@ -138,7 +138,7 @@ export function ApiKeyInput({ onApiKeyChange }: ApiKeyInputProps) {
               value={apiKey}
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
-              placeholder="AIza..."
+              placeholder="gsk_..."
               autoFocus
               style={{
                 flex: 1,
@@ -213,22 +213,29 @@ export function ApiKeyInput({ onApiKeyChange }: ApiKeyInputProps) {
       </div>
 
       {!hasStoredKey && (
-        <p style={{
+        <div style={{
           textAlign: 'center',
           color: 'var(--color-text-secondary)',
           fontSize: '0.75rem',
-          marginTop: '0.5rem'
+          marginTop: '0.5rem',
+          maxWidth: '600px',
+          margin: '0.5rem auto 0'
         }}>
-          <a
-            href="https://aistudio.google.com/apikey"
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{ color: 'var(--color-accent)' }}
-          >
-            Google AI Studio
-          </a>
-          {' '}でAPIキーを取得できます。キーはブラウザを閉じると消去されます。
-        </p>
+          <p style={{ margin: '0 0 0.25rem' }}>
+            <a
+              href="https://console.groq.com/keys"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: 'var(--color-accent)' }}
+            >
+              Groq Console
+            </a>
+            {' '}で無料のAPIキーを取得できます（クレジットカード不要）
+          </p>
+          <p style={{ margin: 0, opacity: 0.8 }}>
+            手順: アカウント作成 → API Keys → Create API Key
+          </p>
+        </div>
       )}
     </div>
   );
