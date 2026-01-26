@@ -291,6 +291,9 @@ from prompts.v2_templates import (
     get_cognitive_questions_step2,
     get_cognitive_questions_step3,
 )
+from schemas.provider import ProviderInfo, ProvidersResponse
+from schemas.conversation import ConversationUploadRequest, ConversationUploadResponse
+from parsers.json_parser import ConversationParser
 
 
 @app.post("/api/v2/diagnose/start", response_model=DiagnoseV2StartResponse)
@@ -520,3 +523,85 @@ def _convert_to_questions(followup_questions: list[dict]) -> list[Question]:
         ))
 
     return questions
+
+
+# =============================================================================
+# プロバイダー関連エンドポイント
+# =============================================================================
+
+PROVIDER_INFO = [
+    ProviderInfo(
+        id="openai",
+        name="OpenAI",
+        default_model="gpt-4o",
+        available_models=["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"],
+        description="OpenAI GPT models (GPT-4o, GPT-4, GPT-3.5)",
+    ),
+    ProviderInfo(
+        id="groq",
+        name="Groq",
+        default_model="llama-3.3-70b-versatile",
+        available_models=["llama-3.3-70b-versatile", "mixtral-8x7b-32768", "gemma2-9b-it"],
+        description="Groq high-speed inference (Llama 3.3, Mixtral)",
+    ),
+    ProviderInfo(
+        id="gemini",
+        name="Google Gemini",
+        default_model="gemini-2.0-flash",
+        available_models=["gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"],
+        description="Google Gemini models (Gemini 2.0, 1.5)",
+    ),
+]
+
+
+@app.get("/api/providers", response_model=ProvidersResponse)
+async def get_providers():
+    """
+    利用可能なLLMプロバイダー一覧を取得。
+
+    各プロバイダーのID、名前、デフォルトモデル、利用可能モデル一覧を返す。
+    """
+    return ProvidersResponse(providers=PROVIDER_INFO)
+
+
+@app.post("/api/v2/diagnose/upload-conversation", response_model=ConversationUploadResponse)
+async def upload_conversation(data: ConversationUploadRequest):
+    """
+    過去のAI会話をアップロードして特性抽出に使用。
+
+    ChatGPT、Claudeのエクスポート形式に対応。
+    アップロードされた会話は診断時の追加コンテキストとして使用できる。
+    """
+    parser = ConversationParser()
+
+    try:
+        # フォーマット検出
+        detected_format = parser.detect_format(data.content) if data.format == "auto" else data.format
+
+        # パース
+        parsed = parser.parse(data.content, format=data.format)
+
+        # ユーザーメッセージ数をカウント
+        user_message_count = len([m for m in parsed.messages if m.role == "user"])
+
+        # コンテキスト文字列を生成
+        context_string = parsed.to_context_string(max_messages=10)
+        context_preview = context_string[:500] if len(context_string) > 500 else context_string
+
+        return ConversationUploadResponse(
+            success=True,
+            message_count=len(parsed.messages),
+            user_message_count=user_message_count,
+            detected_format=detected_format,
+            context_preview=context_preview,
+        )
+
+    except Exception as e:
+        logger.error(f"会話アップロードエラー: {type(e).__name__}: {str(e)[:100]}")
+        return ConversationUploadResponse(
+            success=False,
+            message_count=0,
+            user_message_count=0,
+            detected_format="unknown",
+            context_preview="",
+        )
