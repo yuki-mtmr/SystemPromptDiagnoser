@@ -244,6 +244,7 @@ class LLMServiceV2:
         最終出力のモック生成（LLM未使用時）
 
         認知プロファイルと個人化されたプロンプトを生成
+        明示的な認知特性回答がある場合はそれを優先、なければautonomyから推定
 
         Args:
             all_answers: 全ての回答
@@ -256,22 +257,36 @@ class LLMServiceV2:
         purpose = initial.get("purpose", "general assistance")
         autonomy = initial.get("autonomy", "collaborative")
 
-        # 自律性に基づいて認知プロファイルと推奨スタイルを決定
-        cognitive_profiles = {
+        # 認知プロファイルを構築（明示的回答を優先）
+        cognitive_profile = self._build_cognitive_profile(initial, autonomy, detected_language)
+
+        # 推奨スタイルを決定（detail_orientationに基づく）
+        recommended_style = self._determine_recommended_style(cognitive_profile, autonomy)
+
+        if detected_language == "ja":
+            return self._generate_mock_ja(purpose, autonomy, recommended_style, cognitive_profile)
+        else:
+            return self._generate_mock_en(purpose, autonomy, recommended_style, cognitive_profile)
+
+    def _build_cognitive_profile(
+        self,
+        initial: dict[str, Any],
+        autonomy: str,
+        detected_language: str,
+    ) -> dict[str, Any]:
+        """
+        認知プロファイルを構築
+
+        明示的な回答がある場合はそれを使用、なければautonomyから推定
+        """
+        # 基本プロファイル（autonomyベースのデフォルト）
+        base_profiles = {
             "obedient": {
                 "thinking_pattern": "structural",
                 "learning_type": "visual_text",
                 "detail_orientation": "high",
                 "preferred_structure": "hierarchical",
                 "use_tables": True,
-                "formatting_rules": {
-                    "paragraph_length": "80-120語/段落",
-                    "heading_length": "10-20トークン",
-                    "list_items": "3-7項目",
-                },
-                "avoid_patterns": ["曖昧な表現", "過度な装飾", "推測的な回答"],
-                "persona_summary_ja": "明確な指示と構造化された情報を好む、静的構造思考型の学習者です",
-                "persona_summary_en": "I am a structured thinker who prefers clear instructions and well-organized information",
             },
             "collaborative": {
                 "thinking_pattern": "hybrid",
@@ -279,14 +294,6 @@ class LLMServiceV2:
                 "detail_orientation": "medium",
                 "preferred_structure": "contextual",
                 "use_tables": True,
-                "formatting_rules": {
-                    "paragraph_length": "60-100語/段落",
-                    "heading_length": "10-15トークン",
-                    "list_items": "3-5項目",
-                },
-                "avoid_patterns": ["過度な専門用語", "長すぎる説明"],
-                "persona_summary_ja": "対話を通じて理解を深める、協調型の学習者です",
-                "persona_summary_en": "I am a collaborative learner who deepens understanding through dialogue",
             },
             "autonomous": {
                 "thinking_pattern": "fluid",
@@ -294,42 +301,246 @@ class LLMServiceV2:
                 "detail_orientation": "low",
                 "preferred_structure": "flat",
                 "use_tables": False,
-                "formatting_rules": {
-                    "paragraph_length": "40-80語/段落",
-                    "heading_length": "5-10トークン",
-                    "list_items": "2-4項目",
-                },
-                "avoid_patterns": ["過度な説明", "細かすぎる指示", "冗長な表現"],
-                "persona_summary_ja": "自律的に探索し、要点を素早く把握する探索型の学習者です",
-                "persona_summary_en": "I am an exploratory learner who autonomously navigates and quickly grasps key points",
+            },
+        }
+        base = base_profiles.get(autonomy, base_profiles["collaborative"])
+
+        # learning_scenario → thinking_pattern
+        learning_scenario = initial.get("learning_scenario")
+        if learning_scenario:
+            thinking_map = {
+                "overview": "structural",
+                "tutorial": "structural",
+                "example": "fluid",
+                "question": "fluid",
+            }
+            base["thinking_pattern"] = thinking_map.get(learning_scenario, base["thinking_pattern"])
+
+        # confusion_scenario → learning_type
+        confusion_scenario = initial.get("confusion_scenario")
+        if confusion_scenario:
+            learning_map = {
+                "reread": "visual_text",
+                "example": "kinesthetic",
+                "simplify": "visual_text",
+                "ask": "auditory",
+            }
+            base["learning_type"] = learning_map.get(confusion_scenario, base["learning_type"])
+
+        # info_load_scenario → detail_orientation
+        info_load = initial.get("info_load_scenario")
+        if info_load:
+            detail_map = {
+                "comfortable": "high",
+                "skim": "medium",
+                "overwhelmed": "low",
+                "summary": "medium",
+            }
+            base["detail_orientation"] = detail_map.get(info_load, base["detail_orientation"])
+
+        # format_scenario → preferred_structure, use_tables
+        format_scenario = initial.get("format_scenario")
+        if format_scenario:
+            structure_map = {
+                "structured": "hierarchical",
+                "conversational": "contextual",
+                "code_first": "flat",
+                "table": "hierarchical",
+            }
+            base["preferred_structure"] = structure_map.get(format_scenario, base["preferred_structure"])
+            base["use_tables"] = format_scenario in ["structured", "table"]
+
+        # frustration_scenario → avoid_patterns
+        frustration = initial.get("frustration_scenario", [])
+        avoid_patterns = self._build_avoid_patterns(frustration, detected_language)
+        if not avoid_patterns:
+            # デフォルトのavoid_patterns
+            avoid_patterns = self._get_default_avoid_patterns(autonomy, detected_language)
+
+        # ideal_interaction → コミュニケーショントーン（persona_summaryに反映）
+        ideal_interaction = initial.get("ideal_interaction")
+
+        # formatting_rules（detail_orientationに基づく）
+        formatting_rules = self._get_formatting_rules(base["detail_orientation"])
+
+        # persona_summary生成
+        persona_summary = self._generate_persona_summary(
+            base, ideal_interaction, detected_language
+        )
+
+        return {
+            "thinking_pattern": base["thinking_pattern"],
+            "learning_type": base["learning_type"],
+            "detail_orientation": base["detail_orientation"],
+            "preferred_structure": base["preferred_structure"],
+            "use_tables": base["use_tables"],
+            "formatting_rules": formatting_rules,
+            "avoid_patterns": avoid_patterns,
+            "persona_summary": persona_summary,
+        }
+
+    def _build_avoid_patterns(
+        self,
+        frustration: list[str],
+        detected_language: str,
+    ) -> list[str]:
+        """frustration_scenarioからavoid_patternsを生成"""
+        if not frustration:
+            return []
+
+        patterns_ja = {
+            "too_casual": "カジュアルすぎる口調",
+            "too_long": "長すぎる回答",
+            "too_abstract": "抽象的すぎる説明",
+            "too_detailed": "細かすぎる説明",
+            "uncertain": "曖昧な「〜かもしれません」表現",
+            "emoji": "絵文字や過度な装飾",
+        }
+        patterns_en = {
+            "too_casual": "overly casual tone",
+            "too_long": "excessively long responses",
+            "too_abstract": "overly abstract explanations",
+            "too_detailed": "overly detailed explanations",
+            "uncertain": "uncertain 'might be' expressions",
+            "emoji": "emojis and excessive decorations",
+        }
+        patterns = patterns_ja if detected_language == "ja" else patterns_en
+
+        return [patterns[f] for f in frustration if f in patterns]
+
+    def _get_default_avoid_patterns(
+        self,
+        autonomy: str,
+        detected_language: str,
+    ) -> list[str]:
+        """デフォルトのavoid_patternsを取得"""
+        defaults = {
+            "obedient": {
+                "ja": ["曖昧な表現", "過度な装飾", "推測的な回答"],
+                "en": ["vague expressions", "excessive decorations", "speculative answers"],
+            },
+            "collaborative": {
+                "ja": ["過度な専門用語", "長すぎる説明"],
+                "en": ["excessive jargon", "overly long explanations"],
+            },
+            "autonomous": {
+                "ja": ["過度な説明", "細かすぎる指示", "冗長な表現"],
+                "en": ["excessive explanations", "overly detailed instructions", "verbose expressions"],
+            },
+        }
+        return defaults.get(autonomy, defaults["collaborative"]).get(
+            detected_language, defaults["collaborative"]["en"]
+        )
+
+    def _get_formatting_rules(self, detail_orientation: str) -> dict[str, str]:
+        """detail_orientationに基づいてformatting_rulesを決定"""
+        rules = {
+            "high": {
+                "paragraph_length": "80-120語/段落",
+                "heading_length": "10-20トークン",
+                "list_items": "3-7項目",
+            },
+            "medium": {
+                "paragraph_length": "60-100語/段落",
+                "heading_length": "10-15トークン",
+                "list_items": "3-5項目",
+            },
+            "low": {
+                "paragraph_length": "40-80語/段落",
+                "heading_length": "5-10トークン",
+                "list_items": "2-4項目",
+            },
+        }
+        return rules.get(detail_orientation, rules["medium"])
+
+    def _generate_persona_summary(
+        self,
+        profile: dict[str, Any],
+        ideal_interaction: str | None,
+        detected_language: str,
+    ) -> str:
+        """認知特性からペルソナサマリーを生成"""
+        thinking = profile["thinking_pattern"]
+        detail = profile["detail_orientation"]
+        structure = profile["preferred_structure"]
+
+        # 思考パターンの説明
+        thinking_desc = {
+            "ja": {
+                "structural": "全体構造を先に把握してから詳細に進む構造型思考",
+                "fluid": "具体例から始めて抽象化する流動型思考",
+                "hybrid": "状況に応じて構造的/流動的アプローチを使い分ける混合型思考",
+            },
+            "en": {
+                "structural": "structural thinking that grasps the overall structure first",
+                "fluid": "fluid thinking that starts from examples and abstracts",
+                "hybrid": "hybrid thinking that adapts approach to the situation",
             },
         }
 
-        style_map = {
-            "obedient": "short",
-            "collaborative": "standard",
-            "autonomous": "strict",
-        }
-        recommended_style = style_map.get(autonomy, "standard")
-
-        profile_data = cognitive_profiles.get(autonomy, cognitive_profiles["collaborative"])
-        persona_key = "persona_summary_ja" if detected_language == "ja" else "persona_summary_en"
-
-        cognitive_profile = {
-            "thinking_pattern": profile_data["thinking_pattern"],
-            "learning_type": profile_data["learning_type"],
-            "detail_orientation": profile_data["detail_orientation"],
-            "preferred_structure": profile_data["preferred_structure"],
-            "use_tables": profile_data["use_tables"],
-            "formatting_rules": profile_data["formatting_rules"],
-            "avoid_patterns": profile_data["avoid_patterns"],
-            "persona_summary": profile_data[persona_key],
+        # 詳細志向の説明
+        detail_desc = {
+            "ja": {
+                "high": "詳細な説明を好む",
+                "medium": "バランスの取れた情報量を好む",
+                "low": "要点を素早く把握したい",
+            },
+            "en": {
+                "high": "prefers detailed explanations",
+                "medium": "prefers balanced information",
+                "low": "wants to quickly grasp key points",
+            },
         }
 
-        if detected_language == "ja":
-            return self._generate_mock_ja(purpose, autonomy, recommended_style, cognitive_profile)
+        # 対話スタイルの説明
+        interaction_desc = {
+            "ja": {
+                "mentor": "専門的なアドバイスを求める",
+                "colleague": "対等な議論を好む",
+                "assistant": "的確な指示への対応を求める",
+                "teacher": "丁寧な説明を求める",
+            },
+            "en": {
+                "mentor": "seeks expert advice",
+                "colleague": "prefers equal discussion",
+                "assistant": "expects prompt response to instructions",
+                "teacher": "seeks patient explanations",
+            },
+        }
+
+        lang = detected_language if detected_language in ["ja", "en"] else "en"
+
+        parts = [
+            thinking_desc[lang].get(thinking, thinking_desc[lang]["hybrid"]),
+            detail_desc[lang].get(detail, detail_desc[lang]["medium"]),
+        ]
+
+        if ideal_interaction and ideal_interaction in interaction_desc[lang]:
+            parts.append(interaction_desc[lang][ideal_interaction])
+
+        if lang == "ja":
+            return f"私は{parts[0]}の学習者です。{parts[1]}タイプで、" + (
+                f"{parts[2]}傾向があります。" if len(parts) > 2 else "。"
+            )
         else:
-            return self._generate_mock_en(purpose, autonomy, recommended_style, cognitive_profile)
+            return f"I am a learner with {parts[0]}. I {parts[1]}" + (
+                f" and {parts[2]}." if len(parts) > 2 else "."
+            )
+
+    def _determine_recommended_style(
+        self,
+        cognitive_profile: dict[str, Any],
+        autonomy: str,
+    ) -> str:
+        """認知プロファイルから推奨スタイルを決定"""
+        detail = cognitive_profile["detail_orientation"]
+
+        if detail == "high":
+            return "strict"
+        elif detail == "low":
+            return "short"
+        else:
+            return "standard"
 
     def _generate_mock_ja(
         self,

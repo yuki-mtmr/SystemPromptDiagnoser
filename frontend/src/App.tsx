@@ -4,6 +4,8 @@ import { Footer } from './components/Footer';
 import { Questionnaire, type DiagnoseAnswers } from './components/Questionnaire';
 import { ResultsDisplay, type DiagnoseResult } from './components/ResultsDisplay';
 import { ApiKeyInput, getStoredApiKey } from './components/ApiKeyInput';
+import { DiagnoseFlow } from './components/DiagnoseFlow';
+import type { DiagnoseV2Result } from './hooks/useDiagnoseSession';
 import { useLoadingProgress } from './hooks/useLoadingProgress';
 import { useFetchWithTimeout } from './hooks/useFetchWithTimeout';
 import './App.css';
@@ -11,8 +13,23 @@ import './App.css';
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8001';
 const REQUEST_TIMEOUT = 60000; // 60秒
 
+// v2結果をv1形式に変換
+function convertV2ToV1Result(v2Result: DiagnoseV2Result): DiagnoseResult {
+  return {
+    recommended_style: v2Result.recommended_style,
+    variants: v2Result.variants,
+    source: v2Result.source,
+    user_profile: v2Result.user_profile,
+    recommendation_reason: v2Result.recommendation_reason,
+  };
+}
+
+type ViewType = 'questionnaire' | 'questionnaire-v2' | 'loading' | 'results' | 'error';
+
 function App() {
-  const [view, setView] = useState<'questionnaire' | 'loading' | 'results' | 'error'>('questionnaire');
+  // v2を優先、エラー時はv1にフォールバック
+  const [useV2, setUseV2] = useState(true);
+  const [view, setView] = useState<ViewType>('questionnaire-v2');
   const [results, setResults] = useState<DiagnoseResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [hasApiKey, setHasApiKey] = useState<boolean>(!!getStoredApiKey());
@@ -20,7 +37,7 @@ function App() {
   // プログレス表示フック
   const { message: loadingMessage } = useLoadingProgress(view === 'loading');
 
-  // タイムアウト付きfetchフック
+  // タイムアウト付きfetchフック（v1用）
   const { fetchWithTimeout } = useFetchWithTimeout<DiagnoseResult>({
     timeout: REQUEST_TIMEOUT,
   });
@@ -29,6 +46,20 @@ function App() {
     setHasApiKey(hasKey);
   }, []);
 
+  // v2完了ハンドラ
+  const handleV2Complete = useCallback((v2Result: DiagnoseV2Result) => {
+    setResults(convertV2ToV1Result(v2Result));
+    setView('results');
+  }, []);
+
+  // v2エラーハンドラ - v1にフォールバック
+  const handleV2Error = useCallback((err: Error) => {
+    console.warn('v2診断でエラーが発生しました。v1にフォールバックします:', err.message);
+    setUseV2(false);
+    setView('questionnaire');
+  }, []);
+
+  // v1の診断処理
   const handleDiagnose = async (answers: DiagnoseAnswers) => {
     setView('loading');
     setError(null);
@@ -53,18 +84,24 @@ function App() {
       setResults(data);
       setView('results');
     } else {
-      // fetchWithTimeoutがnullを返した場合、内部でエラーが発生している
-      // エラーはフックの状態で管理されているが、UIで表示するためにここで設定
       setError('診断に失敗しました。しばらく経ってから再度お試しください。');
       setView('error');
     }
   };
 
   const handleReset = () => {
-    setView('questionnaire');
+    // v2を再度試行
+    setUseV2(true);
+    setView('questionnaire-v2');
     setResults(null);
     setError(null);
   };
+
+  // v1に切り替え
+  const switchToV1 = useCallback(() => {
+    setUseV2(false);
+    setView('questionnaire');
+  }, []);
 
   return (
     <>
@@ -97,7 +134,36 @@ function App() {
           </div>
         )}
 
-        {view === 'questionnaire' && (
+        {/* v2診断フロー */}
+        {view === 'questionnaire-v2' && useV2 && (
+          <div className="glass-panel" style={{ padding: '2rem', maxWidth: '700px', margin: '2rem auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <h3 style={{ margin: 0, fontSize: '1.25rem' }}>診断を開始</h3>
+              <button
+                onClick={switchToV1}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--color-text-secondary)',
+                  fontSize: '0.75rem',
+                  cursor: 'pointer',
+                  textDecoration: 'underline',
+                }}
+              >
+                旧バージョンを使用
+              </button>
+            </div>
+            <DiagnoseFlow
+              onComplete={handleV2Complete}
+              onError={handleV2Error}
+              baseUrl={API_BASE_URL}
+              apiKey={getStoredApiKey() || undefined}
+            />
+          </div>
+        )}
+
+        {/* v1アンケート */}
+        {view === 'questionnaire' && !useV2 && (
           <Questionnaire onComplete={handleDiagnose} />
         )}
 

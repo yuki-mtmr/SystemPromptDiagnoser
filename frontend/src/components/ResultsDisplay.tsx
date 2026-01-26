@@ -7,10 +7,22 @@ interface PromptVariant {
   description: string;
 }
 
+// v2用のユーザープロファイル
+export interface UserProfile {
+  primary_use_case: string;
+  autonomy_preference: string;
+  communication_style: string;
+  key_traits: string[];
+  detected_needs: string[];
+}
+
 export interface DiagnoseResult {
   recommended_style: string;
   variants: PromptVariant[];
   source?: 'llm' | 'mock';
+  // v2で追加
+  user_profile?: UserProfile;
+  recommendation_reason?: string;
 }
 
 interface ResultsDisplayProps {
@@ -67,6 +79,83 @@ export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ results, onReset
           </span>
         )}
       </div>
+
+      {/* v2: ユーザープロファイル表示 */}
+      {results.user_profile && (
+        <div style={{
+          background: 'var(--color-bg-secondary)',
+          borderRadius: '0.75rem',
+          padding: '1.5rem',
+          marginBottom: '2rem',
+          border: '1px solid var(--color-border)',
+        }}>
+          <h3 style={{ margin: '0 0 1rem 0', fontSize: '1.1rem' }}>
+            あなたのプロファイル
+          </h3>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+            gap: '1rem',
+          }}>
+            <div>
+              <p style={{ margin: 0, color: 'var(--color-text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                主な用途
+              </p>
+              <p style={{ margin: '0.25rem 0 0', fontWeight: 500 }}>
+                {results.user_profile.primary_use_case}
+              </p>
+            </div>
+            <div>
+              <p style={{ margin: 0, color: 'var(--color-text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                自律性の好み
+              </p>
+              <p style={{ margin: '0.25rem 0 0', fontWeight: 500 }}>
+                {results.user_profile.autonomy_preference}
+              </p>
+            </div>
+            <div>
+              <p style={{ margin: 0, color: 'var(--color-text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                コミュニケーションスタイル
+              </p>
+              <p style={{ margin: '0.25rem 0 0', fontWeight: 500 }}>
+                {results.user_profile.communication_style}
+              </p>
+            </div>
+          </div>
+          {results.user_profile.key_traits.length > 0 && (
+            <div style={{ marginTop: '1rem' }}>
+              <p style={{ margin: 0, color: 'var(--color-text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                特性
+              </p>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.5rem' }}>
+                {results.user_profile.key_traits.map((trait, i) => (
+                  <span key={i} style={{
+                    padding: '0.25rem 0.75rem',
+                    background: 'var(--color-bg-tertiary)',
+                    borderRadius: '9999px',
+                    fontSize: '0.875rem',
+                  }}>
+                    {trait}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+          {results.recommendation_reason && (
+            <div style={{
+              marginTop: '1rem',
+              padding: '0.75rem',
+              background: 'rgba(99, 102, 241, 0.1)',
+              borderRadius: '0.5rem',
+              borderLeft: '3px solid var(--color-accent)',
+            }}>
+              <p style={{ margin: 0, fontSize: '0.875rem' }}>
+                <strong>推奨理由:</strong> {results.recommendation_reason}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Style selector tabs */}
       <div style={{

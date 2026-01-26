@@ -300,3 +300,391 @@ def get_style_name(style: str, language: str = "ja") -> str:
     """
     names = STYLE_NAMES.get(language, STYLE_NAMES["en"])
     return names.get(style, style)
+
+
+# 認知特性質問 - ステップ2（シナリオベース・間接的質問）
+COGNITIVE_QUESTIONS_STEP2 = {
+    "ja": [
+        {
+            "id": "learning_scenario",
+            "question": "新しいプログラミング言語やツールを学ぶとき、最初に何をしますか？",
+            "type": "choice",
+            "choices": [
+                {
+                    "value": "overview",
+                    "label": "公式ドキュメントの概要を読む",
+                    "description": "全体像や設計思想から入る",
+                },
+                {
+                    "value": "tutorial",
+                    "label": "チュートリアルを手を動かしながら進める",
+                    "description": "具体例から学ぶ",
+                },
+                {
+                    "value": "example",
+                    "label": "既存のコードを読んで真似する",
+                    "description": "実例から抽象化する",
+                },
+                {
+                    "value": "question",
+                    "label": "解決したい課題から逆引きで調べる",
+                    "description": "必要な部分だけ学ぶ",
+                },
+            ],
+        },
+        {
+            "id": "confusion_scenario",
+            "question": "説明を読んでも理解できないとき、どうすることが多いですか？",
+            "type": "choice",
+            "choices": [
+                {
+                    "value": "reread",
+                    "label": "最初から読み直して全体を整理する",
+                    "description": "構造を再把握する",
+                },
+                {
+                    "value": "example",
+                    "label": "具体例やコードを探して試す",
+                    "description": "手を動かして理解する",
+                },
+                {
+                    "value": "simplify",
+                    "label": "もっとシンプルな説明を探す",
+                    "description": "抽象度を下げる",
+                },
+                {
+                    "value": "ask",
+                    "label": "誰かに質問して対話で理解する",
+                    "description": "やり取りで明確にする",
+                },
+            ],
+        },
+        {
+            "id": "info_load_scenario",
+            "question": "長い技術文書やマニュアルを読むとき、どう感じますか？",
+            "type": "choice",
+            "choices": [
+                {
+                    "value": "comfortable",
+                    "label": "詳しい方が安心する",
+                    "description": "網羅的な情報があると理解しやすい",
+                },
+                {
+                    "value": "skim",
+                    "label": "目次や見出しを見て必要な部分だけ読む",
+                    "description": "効率的に情報を取得したい",
+                },
+                {
+                    "value": "overwhelmed",
+                    "label": "情報量が多いと疲れる",
+                    "description": "段階的に提示してほしい",
+                },
+                {
+                    "value": "summary",
+                    "label": "最初に要約があると助かる",
+                    "description": "全体像を先に知りたい",
+                },
+            ],
+        },
+        {
+            "id": "format_scenario",
+            "question": "AIからの回答で「これは分かりやすい」と感じたのはどんな形式でしたか？",
+            "type": "choice",
+            "choices": [
+                {
+                    "value": "structured",
+                    "label": "見出しと箇条書きで整理された回答",
+                    "description": "階層的に構造化された形式",
+                },
+                {
+                    "value": "conversational",
+                    "label": "自然な文章で説明された回答",
+                    "description": "読み物として理解しやすい",
+                },
+                {
+                    "value": "code_first",
+                    "label": "コードが最初にあり、後から解説",
+                    "description": "実例先行型",
+                },
+                {
+                    "value": "table",
+                    "label": "表や比較でまとめられた回答",
+                    "description": "視覚的に整理された形式",
+                },
+            ],
+        },
+    ],
+    "en": [
+        {
+            "id": "learning_scenario",
+            "question": "When learning a new programming language or tool, what do you do first?",
+            "type": "choice",
+            "choices": [
+                {
+                    "value": "overview",
+                    "label": "Read the official documentation overview",
+                    "description": "Start with the big picture and design philosophy",
+                },
+                {
+                    "value": "tutorial",
+                    "label": "Follow a tutorial hands-on",
+                    "description": "Learn from concrete examples",
+                },
+                {
+                    "value": "example",
+                    "label": "Read existing code and imitate it",
+                    "description": "Abstract from real examples",
+                },
+                {
+                    "value": "question",
+                    "label": "Research based on a specific problem to solve",
+                    "description": "Learn only what's needed",
+                },
+            ],
+        },
+        {
+            "id": "confusion_scenario",
+            "question": "When you read an explanation but don't understand, what do you usually do?",
+            "type": "choice",
+            "choices": [
+                {
+                    "value": "reread",
+                    "label": "Re-read from the beginning to organize the whole",
+                    "description": "Re-grasp the structure",
+                },
+                {
+                    "value": "example",
+                    "label": "Search for concrete examples or code to try",
+                    "description": "Understand by doing",
+                },
+                {
+                    "value": "simplify",
+                    "label": "Look for a simpler explanation",
+                    "description": "Lower the abstraction level",
+                },
+                {
+                    "value": "ask",
+                    "label": "Ask someone and understand through dialogue",
+                    "description": "Clarify through interaction",
+                },
+            ],
+        },
+        {
+            "id": "info_load_scenario",
+            "question": "How do you feel when reading long technical documents or manuals?",
+            "type": "choice",
+            "choices": [
+                {
+                    "value": "comfortable",
+                    "label": "Detailed is better - feels more secure",
+                    "description": "Comprehensive info helps understanding",
+                },
+                {
+                    "value": "skim",
+                    "label": "Check TOC and read only needed parts",
+                    "description": "Want to get info efficiently",
+                },
+                {
+                    "value": "overwhelmed",
+                    "label": "Too much info is tiring",
+                    "description": "Prefer step-by-step presentation",
+                },
+                {
+                    "value": "summary",
+                    "label": "A summary at the start would help",
+                    "description": "Want to know the big picture first",
+                },
+            ],
+        },
+        {
+            "id": "format_scenario",
+            "question": "What format of AI response did you find most understandable?",
+            "type": "choice",
+            "choices": [
+                {
+                    "value": "structured",
+                    "label": "Response organized with headings and bullet points",
+                    "description": "Hierarchically structured format",
+                },
+                {
+                    "value": "conversational",
+                    "label": "Response explained in natural prose",
+                    "description": "Easier to read as narrative",
+                },
+                {
+                    "value": "code_first",
+                    "label": "Code first, then explanation",
+                    "description": "Example-first approach",
+                },
+                {
+                    "value": "table",
+                    "label": "Response summarized in tables or comparisons",
+                    "description": "Visually organized format",
+                },
+            ],
+        },
+    ],
+}
+
+
+# 認知特性質問 - ステップ3（好み・回避パターン）
+COGNITIVE_QUESTIONS_STEP3 = {
+    "ja": [
+        {
+            "id": "frustration_scenario",
+            "question": "AIの回答で「これは合わない」と感じたのはどんな時でしたか？（複数選択可）",
+            "type": "multi_choice",
+            "choices": [
+                {
+                    "value": "too_casual",
+                    "label": "カジュアルすぎる口調だった",
+                    "description": "フレンドリーすぎて専門性を感じなかった",
+                },
+                {
+                    "value": "too_long",
+                    "label": "回答が長すぎて要点が分からなかった",
+                    "description": "冗長で本質が見えなかった",
+                },
+                {
+                    "value": "too_abstract",
+                    "label": "抽象的すぎて具体例がなかった",
+                    "description": "実践に結びつかなかった",
+                },
+                {
+                    "value": "too_detailed",
+                    "label": "細かすぎて本質が見えなかった",
+                    "description": "詳細に埋もれて全体像が掴めなかった",
+                },
+                {
+                    "value": "uncertain",
+                    "label": "「〜かもしれません」が多くて不安になった",
+                    "description": "自信のない回答が信頼できなかった",
+                },
+                {
+                    "value": "emoji",
+                    "label": "絵文字や装飾が多すぎた",
+                    "description": "視覚的なノイズが気になった",
+                },
+            ],
+        },
+        {
+            "id": "ideal_interaction",
+            "question": "AIとの理想的なやり取りはどんなイメージですか？",
+            "type": "choice",
+            "choices": [
+                {
+                    "value": "mentor",
+                    "label": "経験豊富な先輩に相談する感覚",
+                    "description": "的確なアドバイスをくれる",
+                },
+                {
+                    "value": "colleague",
+                    "label": "同僚と一緒に考える感覚",
+                    "description": "対等に議論できる",
+                },
+                {
+                    "value": "assistant",
+                    "label": "優秀なアシスタントに指示する感覚",
+                    "description": "指示通りに素早く動く",
+                },
+                {
+                    "value": "teacher",
+                    "label": "丁寧な先生に教わる感覚",
+                    "description": "分かるまで説明してくれる",
+                },
+            ],
+        },
+    ],
+    "en": [
+        {
+            "id": "frustration_scenario",
+            "question": "When did you feel an AI response didn't work for you? (Select multiple)",
+            "type": "multi_choice",
+            "choices": [
+                {
+                    "value": "too_casual",
+                    "label": "Tone was too casual",
+                    "description": "Too friendly, didn't feel professional",
+                },
+                {
+                    "value": "too_long",
+                    "label": "Response was too long to find the point",
+                    "description": "Verbose, couldn't see the essence",
+                },
+                {
+                    "value": "too_abstract",
+                    "label": "Too abstract without concrete examples",
+                    "description": "Couldn't connect to practice",
+                },
+                {
+                    "value": "too_detailed",
+                    "label": "Too detailed to see the big picture",
+                    "description": "Lost in details, couldn't grasp overall view",
+                },
+                {
+                    "value": "uncertain",
+                    "label": "Too many 'might be' or 'perhaps'",
+                    "description": "Uncertain answers felt unreliable",
+                },
+                {
+                    "value": "emoji",
+                    "label": "Too many emojis or decorations",
+                    "description": "Visual noise was distracting",
+                },
+            ],
+        },
+        {
+            "id": "ideal_interaction",
+            "question": "What's your ideal image of interacting with AI?",
+            "type": "choice",
+            "choices": [
+                {
+                    "value": "mentor",
+                    "label": "Like consulting an experienced senior",
+                    "description": "Gives accurate advice",
+                },
+                {
+                    "value": "colleague",
+                    "label": "Like thinking together with a colleague",
+                    "description": "Can discuss as equals",
+                },
+                {
+                    "value": "assistant",
+                    "label": "Like directing a capable assistant",
+                    "description": "Moves quickly as instructed",
+                },
+                {
+                    "value": "teacher",
+                    "label": "Like learning from a patient teacher",
+                    "description": "Explains until you understand",
+                },
+            ],
+        },
+    ],
+}
+
+
+def get_cognitive_questions_step2(language: str = "ja") -> list:
+    """
+    認知特性質問（ステップ2）を取得
+
+    Args:
+        language: 言語コード（"ja" または "en"）
+
+    Returns:
+        ステップ2の質問リスト
+    """
+    return COGNITIVE_QUESTIONS_STEP2.get(language, COGNITIVE_QUESTIONS_STEP2["en"])
+
+
+def get_cognitive_questions_step3(language: str = "ja") -> list:
+    """
+    認知特性質問（ステップ3）を取得
+
+    Args:
+        language: 言語コード（"ja" または "en"）
+
+    Returns:
+        ステップ3の質問リスト
+    """
+    return COGNITIVE_QUESTIONS_STEP3.get(language, COGNITIVE_QUESTIONS_STEP3["en"])

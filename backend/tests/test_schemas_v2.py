@@ -8,6 +8,9 @@ from pydantic import ValidationError
 from schemas.diagnose_v2 import (
     CognitiveProfile,
     UserProfile,
+    InitialAnswers,
+    Question,
+    QuestionChoice,
 )
 
 
@@ -232,3 +235,179 @@ class TestUserProfileWithCognitive:
         assert profile.autonomy_preference == "autonomous"
         assert len(profile.key_traits) == 2
         assert len(profile.detected_needs) == 2
+
+
+class TestInitialAnswersExtended:
+    """InitialAnswers の認知特性フィールド拡張テスト"""
+
+    def test_backward_compatibility_minimal_fields(self):
+        """既存フィールドのみで作成可能（後方互換性）"""
+        answers = InitialAnswers(
+            purpose="コードレビュー",
+            autonomy="collaborative"
+        )
+        assert answers.purpose == "コードレビュー"
+        assert answers.autonomy == "collaborative"
+
+    def test_learning_scenario_is_optional(self):
+        """learning_scenario はオプショナル"""
+        answers = InitialAnswers(
+            purpose="test",
+            autonomy="collaborative"
+        )
+        assert answers.learning_scenario is None
+
+    def test_learning_scenario_accepts_valid_values(self):
+        """learning_scenario は有効な値を受け付ける"""
+        for value in ["overview", "tutorial", "example", "question"]:
+            answers = InitialAnswers(
+                purpose="test",
+                autonomy="collaborative",
+                learning_scenario=value
+            )
+            assert answers.learning_scenario == value
+
+    def test_confusion_scenario_is_optional(self):
+        """confusion_scenario はオプショナル"""
+        answers = InitialAnswers(
+            purpose="test",
+            autonomy="collaborative"
+        )
+        assert answers.confusion_scenario is None
+
+    def test_confusion_scenario_accepts_valid_values(self):
+        """confusion_scenario は有効な値を受け付ける"""
+        for value in ["reread", "example", "simplify", "ask"]:
+            answers = InitialAnswers(
+                purpose="test",
+                autonomy="collaborative",
+                confusion_scenario=value
+            )
+            assert answers.confusion_scenario == value
+
+    def test_info_load_scenario_is_optional(self):
+        """info_load_scenario はオプショナル"""
+        answers = InitialAnswers(
+            purpose="test",
+            autonomy="collaborative"
+        )
+        assert answers.info_load_scenario is None
+
+    def test_info_load_scenario_accepts_valid_values(self):
+        """info_load_scenario は有効な値を受け付ける"""
+        for value in ["comfortable", "skim", "overwhelmed", "summary"]:
+            answers = InitialAnswers(
+                purpose="test",
+                autonomy="collaborative",
+                info_load_scenario=value
+            )
+            assert answers.info_load_scenario == value
+
+    def test_format_scenario_is_optional(self):
+        """format_scenario はオプショナル"""
+        answers = InitialAnswers(
+            purpose="test",
+            autonomy="collaborative"
+        )
+        assert answers.format_scenario is None
+
+    def test_format_scenario_accepts_valid_values(self):
+        """format_scenario は有効な値を受け付ける"""
+        for value in ["structured", "conversational", "code_first", "table"]:
+            answers = InitialAnswers(
+                purpose="test",
+                autonomy="collaborative",
+                format_scenario=value
+            )
+            assert answers.format_scenario == value
+
+    def test_frustration_scenario_is_optional_list(self):
+        """frustration_scenario はオプショナルなリスト"""
+        answers = InitialAnswers(
+            purpose="test",
+            autonomy="collaborative"
+        )
+        assert answers.frustration_scenario is None
+
+    def test_frustration_scenario_accepts_multiple_values(self):
+        """frustration_scenario は複数の値を受け付ける"""
+        answers = InitialAnswers(
+            purpose="test",
+            autonomy="collaborative",
+            frustration_scenario=["too_casual", "too_long", "emoji"]
+        )
+        assert len(answers.frustration_scenario) == 3
+        assert "too_casual" in answers.frustration_scenario
+
+    def test_ideal_interaction_is_optional(self):
+        """ideal_interaction はオプショナル"""
+        answers = InitialAnswers(
+            purpose="test",
+            autonomy="collaborative"
+        )
+        assert answers.ideal_interaction is None
+
+    def test_ideal_interaction_accepts_valid_values(self):
+        """ideal_interaction は有効な値を受け付ける"""
+        for value in ["mentor", "colleague", "assistant", "teacher"]:
+            answers = InitialAnswers(
+                purpose="test",
+                autonomy="collaborative",
+                ideal_interaction=value
+            )
+            assert answers.ideal_interaction == value
+
+    def test_all_cognitive_fields_together(self):
+        """全ての認知特性フィールドを同時に設定可能"""
+        answers = InitialAnswers(
+            purpose="コーディングサポート",
+            autonomy="autonomous",
+            learning_scenario="overview",
+            confusion_scenario="reread",
+            info_load_scenario="comfortable",
+            format_scenario="structured",
+            frustration_scenario=["too_casual", "too_long"],
+            ideal_interaction="mentor"
+        )
+        assert answers.learning_scenario == "overview"
+        assert answers.confusion_scenario == "reread"
+        assert answers.info_load_scenario == "comfortable"
+        assert answers.format_scenario == "structured"
+        assert len(answers.frustration_scenario) == 2
+        assert answers.ideal_interaction == "mentor"
+
+
+class TestQuestionTypeMultiChoice:
+    """Question.type の multi_choice 対応テスト"""
+
+    def test_question_accepts_multi_choice_type(self):
+        """Question は type='multi_choice' を受け付ける"""
+        question = Question(
+            id="frustration_scenario",
+            question="AIの回答で「これは合わない」と感じたのはどんな時でしたか？",
+            type="multi_choice",
+            choices=[
+                QuestionChoice(value="too_casual", label="カジュアルすぎる口調だった"),
+                QuestionChoice(value="too_long", label="回答が長すぎた"),
+            ]
+        )
+        assert question.type == "multi_choice"
+
+    def test_question_still_accepts_freeform(self):
+        """Question は type='freeform' を引き続き受け付ける"""
+        question = Question(
+            id="test",
+            question="テスト質問",
+            type="freeform"
+        )
+        assert question.type == "freeform"
+
+    def test_question_still_accepts_choice(self):
+        """Question は type='choice' を引き続き受け付ける"""
+        question = Question(
+            id="test",
+            question="テスト質問",
+            type="choice",
+            choices=[QuestionChoice(value="a", label="A")]
+        )
+        assert question.type == "choice"

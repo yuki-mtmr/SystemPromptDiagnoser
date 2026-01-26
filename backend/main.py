@@ -287,98 +287,67 @@ from services.session_service import (
     SessionExpiredError,
 )
 from services.llm_service_v2 import create_llm_service_v2, LLMTimeoutError
+from prompts.v2_templates import (
+    get_cognitive_questions_step2,
+    get_cognitive_questions_step3,
+)
 
 
 @app.post("/api/v2/diagnose/start", response_model=DiagnoseV2StartResponse)
 async def diagnose_v2_start(request: Request, data: DiagnoseV2StartRequest):
     """
-    v2診断を開始する。
+    v2診断を開始する（3ステップフロー）。
 
-    初期回答を受け取り、セッションを作成し、動的質問を生成する。
-    LLMが利用可能な場合はLLMで質問を生成、そうでなければモックを使用。
+    ステップ1: 初期回答（purpose, autonomy）を受け取り、認知特性質問（STEP2）を返す
     """
-    api_key, provider = get_api_key_and_provider(request)
     session_service = get_session_service()
 
     # セッション作成
     session_id = session_service.create_session()
 
+    # 言語検出（簡易）
+    purpose = data.initial_answers.purpose
+    has_japanese = any(
+        "\u3040" <= char <= "\u309f" or  # ひらがな
+        "\u30a0" <= char <= "\u30ff" or  # カタカナ
+        "\u4e00" <= char <= "\u9fff"  # 漢字
+        for char in purpose
+    )
+    detected_language = "ja" if has_japanese else "en"
+
     # 初期回答をセッションに保存
     session_service.update_session(session_id, {
-        "phase": 1,
+        "step": 1,
         "initial_answers": {
             "purpose": data.initial_answers.purpose,
             "autonomy": data.initial_answers.autonomy,
         },
-        "followup_answers": [],
+        "cognitive_answers": {},
         "followup_count": 0,
+        "detected_language": detected_language,
     })
 
-    try:
-        if is_llm_available_with_key(api_key):
-            logger.info(f"v2 診断開始: LLM使用 ({provider})")
-            llm_service = create_llm_service_v2(api_key, provider=provider)
-            result = llm_service.generate_followup_questions(data.initial_answers)
-        else:
-            logger.info("v2 診断開始: モック使用")
-            llm_service = create_llm_service_v2("")
-            result = llm_service.generate_followup_questions_mock(data.initial_answers)
+    logger.info(f"v2 診断開始: 3ステップフロー (言語: {detected_language})")
 
-        # 言語とフォローアップ質問をセッションに保存
-        session_service.update_session(session_id, {
-            "detected_language": result.get("detected_language", "en"),
-            "analysis_notes": result.get("analysis_notes", ""),
-        })
+    # 認知特性質問（STEP2）を返す
+    step2_questions = get_cognitive_questions_step2(detected_language)
+    questions = _convert_to_questions(step2_questions)
 
-        followup_questions = result.get("followup_questions", [])
-
-        # フォローアップ質問がない場合、最終出力を生成
-        if not followup_questions:
-            return await _generate_final_result(
-                session_id, session_service, api_key, provider
-            )
-
-        # フォローアップ質問をQuestion形式に変換
-        questions = _convert_to_questions(followup_questions)
-
-        return DiagnoseV2StartResponse(
-            session_id=session_id,
-            phase="followup",
-            followup_questions=questions,
-            result=None,
-        )
-
-    except Exception as e:
-        logger.error(f"v2 診断開始エラー: {type(e).__name__}: {str(e)[:100]}")
-        # エラー時はモックでフォールバック
-        llm_service = create_llm_service_v2("")
-        result = llm_service.generate_followup_questions_mock(data.initial_answers)
-
-        session_service.update_session(session_id, {
-            "detected_language": result.get("detected_language", "en"),
-        })
-
-        followup_questions = result.get("followup_questions", [])
-        if not followup_questions:
-            return await _generate_final_result(
-                session_id, session_service, api_key, provider
-            )
-
-        return DiagnoseV2StartResponse(
-            session_id=session_id,
-            phase="followup",
-            followup_questions=_convert_to_questions(followup_questions),
-            result=None,
-        )
+    return DiagnoseV2StartResponse(
+        session_id=session_id,
+        phase="followup",
+        followup_questions=questions,
+        result=None,
+    )
 
 
 @app.post("/api/v2/diagnose/continue", response_model=DiagnoseV2ContinueResponse)
 async def diagnose_v2_continue(request: Request, data: DiagnoseV2ContinueRequest):
     """
-    v2診断を継続する。
+    v2診断を継続する（3ステップフロー）。
 
-    追加の回答を受け取り、さらに質問が必要か判断する。
-    必要なければ最終結果を生成して返す。
+    ステップ2: 認知特性質問（STEP2）の回答を受け取り、STEP3の質問を返す
+    ステップ3: 好み・回避質問（STEP3）の回答を受け取り、最終結果を返す
     """
     api_key, provider = get_api_key_and_provider(request)
     session_service = get_session_service()
@@ -390,29 +359,40 @@ async def diagnose_v2_continue(request: Request, data: DiagnoseV2ContinueRequest
     except SessionExpiredError:
         raise HTTPException(status_code=404, detail="セッションの有効期限が切れています")
 
-    # 回答をセッションに保存
-    current_followup_answers = session.data.get("followup_answers", [])
+    # 回答を認知特性として保存
+    cognitive_answers = session.data.get("cognitive_answers", {})
     for answer in data.answers:
-        current_followup_answers.append({
-            "question_id": answer.question_id,
-            "answer": answer.answer,
-        })
+        cognitive_answers[answer.question_id] = answer.answer
 
     followup_count = session.data.get("followup_count", 0) + 1
+    detected_language = session.data.get("detected_language", "en")
 
     session_service.update_session(data.session_id, {
-        "followup_answers": current_followup_answers,
+        "cognitive_answers": cognitive_answers,
         "followup_count": followup_count,
     })
 
-    # 最大2回のフォローアップ後は最終結果を生成
+    # ステップ2完了 → ステップ3の質問を返す
+    if followup_count == 1:
+        logger.info("v2 診断: ステップ2完了 → ステップ3の質問を返す")
+        step3_questions = get_cognitive_questions_step3(detected_language)
+        questions = _convert_to_questions(step3_questions)
+
+        return DiagnoseV2ContinueResponse(
+            session_id=data.session_id,
+            phase="followup",
+            followup_questions=questions,
+            result=None,
+        )
+
+    # ステップ3完了 または 最大3回のフォローアップ後は最終結果を生成
     if followup_count >= 2:
+        logger.info("v2 診断: ステップ3完了 → 最終結果を生成")
         return await _generate_final_result(
             data.session_id, session_service, api_key, provider
         )
 
-    # LLMで追加質問が必要か判断（今回はシンプルに最終結果へ）
-    # 将来的にはLLMで追加質問を生成することも可能
+    # それ以外は最終結果へ
     return await _generate_final_result(
         data.session_id, session_service, api_key, provider
     )
@@ -428,8 +408,20 @@ async def _generate_final_result(
     session = session_service.get_session(session_id)
     session_data = session.data
 
+    # 認知特性回答をinitial_answersにマージ
+    initial_answers = session_data.get("initial_answers", {}).copy()
+    cognitive_answers = session_data.get("cognitive_answers", {})
+
+    # 認知特性回答を追加
+    for key, value in cognitive_answers.items():
+        # frustration_scenarioはカンマ区切りの場合リストに変換
+        if key == "frustration_scenario" and isinstance(value, str) and "," in value:
+            initial_answers[key] = [v.strip() for v in value.split(",")]
+        else:
+            initial_answers[key] = value
+
     all_answers = {
-        "initial": session_data.get("initial_answers", {}),
+        "initial": initial_answers,
         "followup": session_data.get("followup_answers", []),
     }
     detected_language = session_data.get("detected_language", "en")
@@ -507,7 +499,8 @@ def _convert_to_questions(followup_questions: list[dict]) -> list[Question]:
     questions = []
     for q in followup_questions:
         choices = None
-        if q.get("type") == "choice" and q.get("choices"):
+        q_type = q.get("type", "freeform")
+        if q_type in ["choice", "multi_choice"] and q.get("choices"):
             choices = [
                 QuestionChoice(
                     value=c.get("value", c.get("label", "")),

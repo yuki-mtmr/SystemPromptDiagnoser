@@ -348,6 +348,195 @@ class TestDiagnoseV2Integration:
         assert response.status_code == 200
 
 
+class TestThreeStepFlow:
+    """3ステップ診断フローのテスト"""
+
+    def test_start_returns_cognitive_step2_questions(self):
+        """開始時に認知特性ステップ2の質問を返す"""
+        response = client.post(
+            "/api/v2/diagnose/start",
+            json={
+                "initial_answers": {
+                    "purpose": "コードレビュー",
+                    "autonomy": "collaborative"
+                }
+            }
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        # フォローアップフェーズで認知特性質問が返される
+        assert data["phase"] == "followup"
+        assert data["followup_questions"] is not None
+
+        # 4つの認知特性質問（STEP2）
+        question_ids = [q["id"] for q in data["followup_questions"]]
+        assert "learning_scenario" in question_ids
+        assert "confusion_scenario" in question_ids
+        assert "info_load_scenario" in question_ids
+        assert "format_scenario" in question_ids
+
+    def test_continue_step2_returns_step3_questions(self):
+        """ステップ2回答後にステップ3の質問を返す"""
+        # ステップ1: 開始
+        start_response = client.post(
+            "/api/v2/diagnose/start",
+            json={
+                "initial_answers": {
+                    "purpose": "コードレビュー",
+                    "autonomy": "collaborative"
+                }
+            }
+        )
+        session_id = start_response.json()["session_id"]
+
+        # ステップ2: 認知特性質問に回答
+        continue_response = client.post(
+            "/api/v2/diagnose/continue",
+            json={
+                "session_id": session_id,
+                "answers": [
+                    {"question_id": "learning_scenario", "answer": "overview"},
+                    {"question_id": "confusion_scenario", "answer": "reread"},
+                    {"question_id": "info_load_scenario", "answer": "comfortable"},
+                    {"question_id": "format_scenario", "answer": "structured"},
+                ]
+            }
+        )
+        assert continue_response.status_code == 200
+        data = continue_response.json()
+
+        # ステップ3の質問（frustration_scenario, ideal_interaction）が返される
+        assert data["phase"] == "followup"
+        question_ids = [q["id"] for q in data["followup_questions"]]
+        assert "frustration_scenario" in question_ids
+        assert "ideal_interaction" in question_ids
+
+    def test_continue_step3_returns_final_result(self):
+        """ステップ3回答後に最終結果を返す"""
+        # ステップ1: 開始
+        start_response = client.post(
+            "/api/v2/diagnose/start",
+            json={
+                "initial_answers": {
+                    "purpose": "コードレビュー",
+                    "autonomy": "collaborative"
+                }
+            }
+        )
+        session_id = start_response.json()["session_id"]
+
+        # ステップ2: 認知特性質問に回答
+        client.post(
+            "/api/v2/diagnose/continue",
+            json={
+                "session_id": session_id,
+                "answers": [
+                    {"question_id": "learning_scenario", "answer": "overview"},
+                    {"question_id": "confusion_scenario", "answer": "reread"},
+                    {"question_id": "info_load_scenario", "answer": "comfortable"},
+                    {"question_id": "format_scenario", "answer": "structured"},
+                ]
+            }
+        )
+
+        # ステップ3: 好み・回避質問に回答
+        final_response = client.post(
+            "/api/v2/diagnose/continue",
+            json={
+                "session_id": session_id,
+                "answers": [
+                    {"question_id": "frustration_scenario", "answer": "too_casual,too_long"},
+                    {"question_id": "ideal_interaction", "answer": "mentor"},
+                ]
+            }
+        )
+        assert final_response.status_code == 200
+        data = final_response.json()
+
+        # 最終結果が返される
+        assert data["phase"] == "complete"
+        assert data["result"] is not None
+
+    def test_cognitive_answers_reflected_in_profile(self):
+        """認知特性回答がプロファイルに反映される"""
+        # ステップ1: 開始
+        start_response = client.post(
+            "/api/v2/diagnose/start",
+            json={
+                "initial_answers": {
+                    "purpose": "コードレビュー",
+                    "autonomy": "collaborative"
+                }
+            }
+        )
+        session_id = start_response.json()["session_id"]
+
+        # ステップ2回答
+        client.post(
+            "/api/v2/diagnose/continue",
+            json={
+                "session_id": session_id,
+                "answers": [
+                    {"question_id": "learning_scenario", "answer": "overview"},
+                    {"question_id": "confusion_scenario", "answer": "example"},
+                    {"question_id": "info_load_scenario", "answer": "comfortable"},
+                    {"question_id": "format_scenario", "answer": "structured"},
+                ]
+            }
+        )
+
+        # ステップ3回答
+        final_response = client.post(
+            "/api/v2/diagnose/continue",
+            json={
+                "session_id": session_id,
+                "answers": [
+                    {"question_id": "frustration_scenario", "answer": "emoji,too_casual"},
+                    {"question_id": "ideal_interaction", "answer": "mentor"},
+                ]
+            }
+        )
+        data = final_response.json()
+        cognitive = data["result"]["user_profile"]["cognitive_profile"]
+
+        # 認知特性が反映されている
+        assert cognitive["thinking_pattern"] == "structural"  # overview → structural
+        assert cognitive["learning_type"] == "kinesthetic"  # example → kinesthetic
+        assert cognitive["detail_orientation"] == "high"  # comfortable → high
+        assert cognitive["preferred_structure"] == "hierarchical"  # structured → hierarchical
+
+    def test_max_followup_count_is_3(self):
+        """フォローアップは最大3回"""
+        # ステップ1: 開始
+        start_response = client.post(
+            "/api/v2/diagnose/start",
+            json={
+                "initial_answers": {
+                    "purpose": "test",
+                    "autonomy": "collaborative"
+                }
+            }
+        )
+        session_id = start_response.json()["session_id"]
+
+        # 3回続行しても完了しない可能性をテスト（3回目で完了を保証）
+        for i in range(3):
+            response = client.post(
+                "/api/v2/diagnose/continue",
+                json={
+                    "session_id": session_id,
+                    "answers": []
+                }
+            )
+            data = response.json()
+            if data["phase"] == "complete":
+                break
+
+        # 3回以内に完了する
+        assert data["phase"] == "complete"
+
+
 class TestDiagnoseV2WithCognitiveProfile:
     """認知プロファイル対応の統合テスト"""
 

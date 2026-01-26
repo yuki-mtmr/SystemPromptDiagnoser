@@ -54,18 +54,39 @@ class Question(BaseModel):
 
     id: str = Field(..., description="質問ID")
     question: str = Field(..., description="質問文")
-    type: Literal["freeform", "choice"] = Field(..., description="質問タイプ")
+    type: Literal["freeform", "choice", "multi_choice"] = Field(..., description="質問タイプ")
     placeholder: str | None = Field(None, description="プレースホルダー（freeform用）")
     suggestions: list[str] | None = Field(None, description="サジェスト（freeform用）")
-    choices: list[QuestionChoice] | None = Field(None, description="選択肢（choice用）")
+    choices: list[QuestionChoice] | None = Field(None, description="選択肢（choice/multi_choice用）")
 
 
 class InitialAnswers(BaseModel):
-    """初期回答"""
+    """初期回答（認知特性フィールド拡張）"""
 
+    # 基本フィールド（必須）
     purpose: str = Field(..., description="AIに何をしてもらいたいか（自由記述）")
     autonomy: Literal["obedient", "collaborative", "autonomous"] = Field(
         ..., description="AIの主導権レベル"
+    )
+
+    # 認知特性フィールド（オプショナル・後方互換性維持）
+    learning_scenario: Literal["overview", "tutorial", "example", "question"] | None = Field(
+        default=None, description="学習シナリオ（思考パターン推定用）"
+    )
+    confusion_scenario: Literal["reread", "example", "simplify", "ask"] | None = Field(
+        default=None, description="混乱時のシナリオ（情報処理スタイル推定用）"
+    )
+    info_load_scenario: Literal["comfortable", "skim", "overwhelmed", "summary"] | None = Field(
+        default=None, description="情報量シナリオ（詳細志向度推定用）"
+    )
+    format_scenario: Literal["structured", "conversational", "code_first", "table"] | None = Field(
+        default=None, description="フォーマットシナリオ（情報構造の好み推定用）"
+    )
+    frustration_scenario: list[str] | None = Field(
+        default=None, description="不満シナリオ（回避パターン推定用、複数選択可）"
+    )
+    ideal_interaction: Literal["mentor", "colleague", "assistant", "teacher"] | None = Field(
+        default=None, description="理想のやり取り（コミュニケーショントーン推定用）"
     )
 
 
