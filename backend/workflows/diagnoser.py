@@ -13,7 +13,7 @@ from operator import add
 from concurrent.futures import ThreadPoolExecutor
 from langgraph.graph import StateGraph, END
 
-from services.llm_service import create_llm_service, LLMService
+from services.llm_service import create_llm_service, LLMService, ProviderType
 from prompts.templates import (
     PROMPT_TEMPLATES,
     get_use_case_context,
@@ -58,15 +58,17 @@ class DiagnoseState(TypedDict):
 class DiagnoserWorkflow:
     """LangGraph workflow for generating customized system prompts."""
 
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str, provider: ProviderType = "groq"):
         """
         Initialize the workflow with the provided API key.
 
         Args:
-            api_key: Google Gemini API key (passed per-request)
+            api_key: API key (Groq or Gemini depending on provider)
+            provider: LLM provider to use ("groq" or "gemini")
         """
         self.api_key = api_key
-        self.llm_service = create_llm_service(api_key)
+        self.provider = provider
+        self.llm_service = create_llm_service(api_key, provider=provider)
         self._use_llm = True  # Track if LLM was used
 
     def _generate_prompt_variant(
@@ -229,7 +231,8 @@ def run_diagnosis(
     tone: str,
     use_case: str,
     api_key: str,
-    additional_notes: Optional[str] = None
+    additional_notes: Optional[str] = None,
+    provider: ProviderType = "groq"
 ) -> dict:
     """
     Run the diagnosis workflow with the given parameters (synchronous).
@@ -239,13 +242,14 @@ def run_diagnosis(
         response_length: Preferred response length
         tone: Communication tone
         use_case: Primary use case
-        api_key: Google Gemini API key (required)
+        api_key: API key (Groq or Gemini)
         additional_notes: Optional additional requirements
+        provider: LLM provider ("groq" or "gemini")
 
     Returns:
         A dict with 'recommended_style', 'variants', and 'source' keys.
     """
-    workflow = DiagnoserWorkflow(api_key)
+    workflow = DiagnoserWorkflow(api_key, provider=provider)
     return workflow.run({
         "strictness": strictness,
         "response_length": response_length,
@@ -262,7 +266,8 @@ async def run_diagnosis_async(
     tone: str,
     use_case: str,
     api_key: str,
-    additional_notes: Optional[str] = None
+    additional_notes: Optional[str] = None,
+    provider: ProviderType = "groq"
 ) -> dict:
     """
     Run the diagnosis workflow with the given parameters (asynchronous).
@@ -274,13 +279,14 @@ async def run_diagnosis_async(
         response_length: Preferred response length
         tone: Communication tone
         use_case: Primary use case
-        api_key: Google Gemini API key (required)
+        api_key: API key (Groq or Gemini)
         additional_notes: Optional additional requirements
+        provider: LLM provider ("groq" or "gemini")
 
     Returns:
         A dict with 'recommended_style', 'variants', and 'source' keys.
     """
-    workflow = DiagnoserWorkflow(api_key)
+    workflow = DiagnoserWorkflow(api_key, provider=provider)
     return await workflow.run_async({
         "strictness": strictness,
         "response_length": response_length,

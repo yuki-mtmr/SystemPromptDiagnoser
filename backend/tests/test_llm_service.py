@@ -49,7 +49,8 @@ class TestLLMServiceTimeout:
 
     def test_successful_call_within_timeout(self):
         """Test that calls within timeout succeed."""
-        with patch('services.llm_service.ChatGoogleGenerativeAI') as mock_chat:
+        # Default provider is now Groq, so mock ChatGroq
+        with patch('services.llm_service.ChatGroq') as mock_chat:
             mock_instance = Mock()
             mock_instance.invoke.return_value = Mock(content="Generated prompt")
             mock_chat.return_value = mock_instance

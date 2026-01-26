@@ -146,8 +146,12 @@ Behavioral Guidelines:
     )
 
 
-async def generate_llm_prompts(request: DiagnoseRequest, api_key: str) -> DiagnoseResponse:
-    """Generate prompts using the LangGraph workflow with Gemini LLM (async, parallel)."""
+async def generate_llm_prompts(
+    request: DiagnoseRequest,
+    api_key: str,
+    provider: str = "groq"
+) -> DiagnoseResponse:
+    """Generate prompts using the LangGraph workflow with LLM (async, parallel)."""
     from workflows.diagnoser import run_diagnosis_async
 
     result = await run_diagnosis_async(
@@ -156,7 +160,8 @@ async def generate_llm_prompts(request: DiagnoseRequest, api_key: str) -> Diagno
         tone=request.tone,
         use_case=request.use_case,
         additional_notes=request.additional_notes,
-        api_key=api_key
+        api_key=api_key,
+        provider=provider
     )
 
     return DiagnoseResponse(
@@ -169,22 +174,33 @@ async def generate_llm_prompts(request: DiagnoseRequest, api_key: str) -> Diagno
     )
 
 
-def get_api_key(request: Request) -> Optional[str]:
+def get_api_key_and_provider(request: Request) -> tuple[Optional[str], str]:
     """
-    Get API key from request header or environment variable.
-    Priority: X-API-Key header > GEMINI_API_KEY env var
+    Get API key and provider from request header or environment variable.
+    Priority: X-API-Key header > GROQ_API_KEY env > GEMINI_API_KEY env
+
+    Returns:
+        Tuple of (api_key, provider) where provider is "groq" or "gemini"
 
     SECURITY: Never log the API key value.
     """
+    # Check header first (assume Groq by default for new keys)
     header_key = request.headers.get("X-API-Key")
+    header_provider = request.headers.get("X-Provider", "groq").lower()
     if header_key and len(header_key) > 0:
-        return header_key
+        return header_key, header_provider
 
-    env_key = os.getenv("GEMINI_API_KEY")
-    if env_key and len(env_key) > 0:
-        return env_key
+    # Check GROQ_API_KEY (preferred)
+    groq_key = os.getenv("GROQ_API_KEY")
+    if groq_key and len(groq_key) > 0:
+        return groq_key, "groq"
 
-    return None
+    # Fallback to GEMINI_API_KEY for backward compatibility
+    gemini_key = os.getenv("GEMINI_API_KEY")
+    if gemini_key and len(gemini_key) > 0:
+        return gemini_key, "gemini"
+
+    return None, "groq"
 
 
 def is_llm_available_with_key(api_key: Optional[str]) -> bool:
@@ -194,11 +210,15 @@ def is_llm_available_with_key(api_key: Optional[str]) -> bool:
 
 @app.get("/health")
 async def health_check():
-    env_key_available = bool(os.getenv("GEMINI_API_KEY"))
+    groq_key = os.getenv("GROQ_API_KEY")
+    gemini_key = os.getenv("GEMINI_API_KEY")
+    env_key_available = bool(groq_key) or bool(gemini_key)
+    provider = "groq" if groq_key else ("gemini" if gemini_key else None)
     return {
         "status": "ok",
         "service": "system-prompt-diagnoser-backend",
-        "env_llm_available": env_key_available
+        "env_llm_available": env_key_available,
+        "provider": provider
     }
 
 
@@ -212,16 +232,16 @@ async def diagnose(request: Request, data: DiagnoseRequest):
     """
     Diagnose user preferences and generate customized system prompts.
 
-    Uses LangGraph workflow with Gemini LLM when API key is provided
-    (via X-API-Key header or GEMINI_API_KEY env var),
+    Uses LangGraph workflow with LLM when API key is provided
+    (via X-API-Key header, GROQ_API_KEY or GEMINI_API_KEY env var),
     otherwise falls back to mock generation.
     """
-    api_key = get_api_key(request)
+    api_key, provider = get_api_key_and_provider(request)
 
     try:
         if is_llm_available_with_key(api_key):
-            logger.info("Using LLM-based generation (parallel execution)")
-            return await generate_llm_prompts(data, api_key)
+            logger.info(f"Using LLM-based generation with {provider} (parallel execution)")
+            return await generate_llm_prompts(data, api_key, provider)
         else:
             logger.info("API key not provided, using mock generation")
             return generate_mock_prompts(data)
@@ -235,10 +255,11 @@ async def diagnose(request: Request, data: DiagnoseRequest):
 @app.get("/api/status")
 async def api_status(request: Request):
     """Get the current API status and configuration."""
-    api_key = get_api_key(request)
+    api_key, provider = get_api_key_and_provider(request)
     has_key = is_llm_available_with_key(api_key)
 
     return {
         "llm_available": has_key,
-        "generation_mode": "llm" if has_key else "mock"
+        "generation_mode": "llm" if has_key else "mock",
+        "provider": provider if has_key else None
     }

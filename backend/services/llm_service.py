@@ -1,8 +1,11 @@
-from typing import Optional
+from typing import Optional, Literal
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
+
+# Provider imports
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_groq import ChatGroq
 
 
 class LLMTimeoutError(Exception):
@@ -10,22 +13,43 @@ class LLMTimeoutError(Exception):
     pass
 
 
+ProviderType = Literal["groq", "gemini"]
+
+
 class LLMService:
-    """Service for interacting with Gemini LLM via LangChain."""
+    """Service for interacting with LLMs via LangChain.
+
+    Supports multiple providers: Groq (default) and Gemini.
+    """
 
     DEFAULT_TIMEOUT = 20  # 20秒
+    DEFAULT_PROVIDER: ProviderType = "groq"
 
-    def __init__(self, api_key: str, timeout: int = DEFAULT_TIMEOUT):
+    # Model configurations per provider
+    MODELS = {
+        "groq": "llama-3.3-70b-versatile",
+        "gemini": "gemini-2.0-flash",
+    }
+
+    def __init__(
+        self,
+        api_key: str,
+        timeout: int = DEFAULT_TIMEOUT,
+        provider: ProviderType = DEFAULT_PROVIDER
+    ):
         """
         Initialize LLM service with the provided API key.
 
         Args:
-            api_key: Google Gemini API key (passed at runtime, not from env)
+            api_key: API key (Groq or Gemini depending on provider)
             timeout: Timeout in seconds for LLM calls (default: 20)
+            provider: LLM provider to use ("groq" or "gemini")
         """
         self.api_key = api_key
         self.timeout = timeout
-        self._llm: Optional[ChatGoogleGenerativeAI] = None
+        self.provider = provider
+        self.model_name = self.MODELS.get(provider, self.MODELS["groq"])
+        self._llm = None
 
     @property
     def is_available(self) -> bool:
@@ -33,17 +57,26 @@ class LLMService:
         return self.api_key is not None and len(self.api_key) > 0
 
     @property
-    def llm(self) -> ChatGoogleGenerativeAI:
+    def llm(self):
         """Get or create the LLM instance."""
         if self._llm is None:
             if not self.is_available:
                 raise ValueError("API key is not configured")
-            self._llm = ChatGoogleGenerativeAI(
-                model="gemini-2.0-flash",
-                google_api_key=self.api_key,
-                temperature=0.7,
-                max_output_tokens=2048
-            )
+
+            if self.provider == "groq":
+                self._llm = ChatGroq(
+                    model=self.model_name,
+                    api_key=self.api_key,
+                    temperature=0.7,
+                    max_tokens=2048
+                )
+            else:  # gemini
+                self._llm = ChatGoogleGenerativeAI(
+                    model=self.model_name,
+                    google_api_key=self.api_key,
+                    temperature=0.7,
+                    max_output_tokens=2048
+                )
         return self._llm
 
     def _generate_prompt_internal(
@@ -177,7 +210,11 @@ The prompt should be practical, clear, and immediately usable.""")
                 )
 
 
-def create_llm_service(api_key: str, timeout: int = LLMService.DEFAULT_TIMEOUT) -> LLMService:
+def create_llm_service(
+    api_key: str,
+    timeout: int = LLMService.DEFAULT_TIMEOUT,
+    provider: ProviderType = LLMService.DEFAULT_PROVIDER
+) -> LLMService:
     """
     Create a new LLM service instance with the provided API key.
 
@@ -185,10 +222,11 @@ def create_llm_service(api_key: str, timeout: int = LLMService.DEFAULT_TIMEOUT) 
     per-request API keys from users.
 
     Args:
-        api_key: Google Gemini API key
+        api_key: API key (Groq or Gemini)
         timeout: Timeout in seconds for LLM calls (default: 20)
+        provider: LLM provider ("groq" or "gemini")
 
     Returns:
         LLMService instance
     """
-    return LLMService(api_key, timeout=timeout)
+    return LLMService(api_key, timeout=timeout, provider=provider)
