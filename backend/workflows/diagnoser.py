@@ -88,6 +88,8 @@ class DiagnoserWorkflow:
             )
         except Exception as e:
             # Fallback to a basic prompt on error
+            import logging
+            logging.getLogger(__name__).error(f"LLM call failed for style '{style}': {type(e).__name__}: {str(e)[:100]}")
             self._use_llm = False
             prompt = self._generate_fallback_prompt(input_data, style)
 

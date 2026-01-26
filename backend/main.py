@@ -226,8 +226,9 @@ async def diagnose(request: Request, data: DiagnoseRequest):
             logger.info("API key not provided, using mock generation")
             return generate_mock_prompts(data)
     except Exception as e:
-        # SECURITY: Do not log error details that might contain API key
-        logger.error("Error during diagnosis, falling back to mock generation")
+        # Log error type for debugging (NOT the API key or full message)
+        logger.error(f"Error during diagnosis: {type(e).__name__}: {str(e)[:100]}")
+        logger.info("Falling back to mock generation")
         return generate_mock_prompts(data)
 
 
