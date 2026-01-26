@@ -394,4 +394,146 @@ describe('useDiagnoseSession', () => {
       )
     })
   })
+
+  describe('プロバイダー設定', () => {
+    it('provider指定時にX-Providerヘッダーが追加される', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          session_id: 'test',
+          phase: 'complete',
+          followup_questions: null,
+          result: {
+            user_profile: {
+              primary_use_case: 'test',
+              autonomy_preference: 'obedient',
+              communication_style: 'casual',
+              key_traits: [],
+              detected_needs: [],
+            },
+            recommended_style: 'short',
+            recommendation_reason: 'reason',
+            variants: [
+              { style: 'short', name: 'Short', prompt: 'p', description: 'd' },
+              { style: 'standard', name: 'Standard', prompt: 'p', description: 'd' },
+              { style: 'strict', name: 'Strict', prompt: 'p', description: 'd' },
+            ],
+            source: 'mock',
+          },
+        }),
+      })
+
+      const { result } = renderHook(() =>
+        useDiagnoseSession({ provider: 'openai' })
+      )
+
+      await act(async () => {
+        await result.current.startSession({
+          purpose: 'test',
+          autonomy: 'obedient',
+        })
+      })
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            'X-Provider': 'openai',
+          }),
+        })
+      )
+    })
+
+    it('provider未指定時はX-Providerヘッダーなし', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          session_id: 'test',
+          phase: 'complete',
+          followup_questions: null,
+          result: {
+            user_profile: {
+              primary_use_case: 'test',
+              autonomy_preference: 'obedient',
+              communication_style: 'casual',
+              key_traits: [],
+              detected_needs: [],
+            },
+            recommended_style: 'short',
+            recommendation_reason: 'reason',
+            variants: [
+              { style: 'short', name: 'Short', prompt: 'p', description: 'd' },
+              { style: 'standard', name: 'Standard', prompt: 'p', description: 'd' },
+              { style: 'strict', name: 'Strict', prompt: 'p', description: 'd' },
+            ],
+            source: 'mock',
+          },
+        }),
+      })
+
+      const { result } = renderHook(() =>
+        useDiagnoseSession({})
+      )
+
+      await act(async () => {
+        await result.current.startSession({
+          purpose: 'test',
+          autonomy: 'obedient',
+        })
+      })
+
+      const fetchCall = mockFetch.mock.calls[0]
+      const headers = fetchCall[1].headers as Record<string, string>
+      expect(headers['X-Provider']).toBeUndefined()
+    })
+
+    it('apiKeyとproviderの両方を指定できる', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          session_id: 'test',
+          phase: 'complete',
+          followup_questions: null,
+          result: {
+            user_profile: {
+              primary_use_case: 'test',
+              autonomy_preference: 'obedient',
+              communication_style: 'casual',
+              key_traits: [],
+              detected_needs: [],
+            },
+            recommended_style: 'short',
+            recommendation_reason: 'reason',
+            variants: [
+              { style: 'short', name: 'Short', prompt: 'p', description: 'd' },
+              { style: 'standard', name: 'Standard', prompt: 'p', description: 'd' },
+              { style: 'strict', name: 'Strict', prompt: 'p', description: 'd' },
+            ],
+            source: 'mock',
+          },
+        }),
+      })
+
+      const { result } = renderHook(() =>
+        useDiagnoseSession({ apiKey: 'sk-test-key', provider: 'openai' })
+      )
+
+      await act(async () => {
+        await result.current.startSession({
+          purpose: 'test',
+          autonomy: 'obedient',
+        })
+      })
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            'X-API-Key': 'sk-test-key',
+            'X-Provider': 'openai',
+          }),
+        })
+      )
+    })
+  })
 })

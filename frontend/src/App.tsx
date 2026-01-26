@@ -3,7 +3,8 @@ import { Header } from './components/Header';
 import { Footer } from './components/Footer';
 import { Questionnaire, type DiagnoseAnswers } from './components/Questionnaire';
 import { ResultsDisplay, type DiagnoseResult } from './components/ResultsDisplay';
-import { ApiKeyInput, getStoredApiKey } from './components/ApiKeyInput';
+import { ApiKeyInput, getStoredApiKey, getStoredProvider } from './components/ApiKeyInput';
+import type { Provider } from './components/ApiKeyInput';
 import { DiagnoseFlow } from './components/DiagnoseFlow';
 import type { DiagnoseV2Result } from './hooks/useDiagnoseSession';
 import { useLoadingProgress } from './hooks/useLoadingProgress';
@@ -33,6 +34,7 @@ function App() {
   const [results, setResults] = useState<DiagnoseResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [hasApiKey, setHasApiKey] = useState<boolean>(!!getStoredApiKey());
+  const [provider, setProvider] = useState<Provider>(getStoredProvider() || 'groq');
 
   // プログレス表示フック
   const { message: loadingMessage } = useLoadingProgress(view === 'loading');
@@ -44,6 +46,10 @@ function App() {
 
   const handleApiKeyChange = useCallback((hasKey: boolean) => {
     setHasApiKey(hasKey);
+  }, []);
+
+  const handleProviderChange = useCallback((newProvider: Provider) => {
+    setProvider(newProvider);
   }, []);
 
   // v2完了ハンドラ
@@ -72,6 +78,10 @@ function App() {
 
     if (apiKey) {
       headers['X-API-Key'] = apiKey;
+    }
+
+    if (provider) {
+      headers['X-Provider'] = provider;
     }
 
     const data = await fetchWithTimeout(`${API_BASE_URL}/api/diagnose`, {
@@ -116,7 +126,7 @@ function App() {
           </p>
         </div>
 
-        <ApiKeyInput onApiKeyChange={handleApiKeyChange} />
+        <ApiKeyInput onApiKeyChange={handleApiKeyChange} onProviderChange={handleProviderChange} />
 
         {!hasApiKey && (
           <div style={{
@@ -158,6 +168,7 @@ function App() {
               onError={handleV2Error}
               baseUrl={API_BASE_URL}
               apiKey={getStoredApiKey() || undefined}
+              provider={provider}
             />
           </div>
         )}

@@ -1,15 +1,57 @@
 import { useState, useEffect } from 'react';
 
+// ストレージキー
 const API_KEY_STORAGE_KEY = 'llm_api_key';
+const PROVIDER_STORAGE_KEY = 'llm_provider';
+
+// プロバイダー型
+export type Provider = 'openai' | 'groq' | 'gemini';
+
+// プロバイダー設定
+interface ProviderConfigItem {
+  name: string;
+  modelInfo: string;
+  placeholder: string;
+  url: string;
+}
+
+export const PROVIDER_CONFIG: Record<Provider, ProviderConfigItem> = {
+  openai: {
+    name: 'OpenAI',
+    modelInfo: 'GPT-4o',
+    placeholder: 'sk-...',
+    url: 'https://platform.openai.com/api-keys',
+  },
+  groq: {
+    name: 'Groq',
+    modelInfo: 'Llama 3.3',
+    placeholder: 'gsk_...',
+    url: 'https://console.groq.com/keys',
+  },
+  gemini: {
+    name: 'Gemini',
+    modelInfo: 'Gemini 2.0',
+    placeholder: 'AI...',
+    url: 'https://aistudio.google.com/apikey',
+  },
+};
 
 interface ApiKeyInputProps {
   onApiKeyChange: (hasKey: boolean) => void;
+  onProviderChange?: (provider: Provider) => void;
 }
 
-export function ApiKeyInput({ onApiKeyChange }: ApiKeyInputProps) {
+export function ApiKeyInput({ onApiKeyChange, onProviderChange }: ApiKeyInputProps) {
   const [apiKey, setApiKey] = useState<string>('');
   const [showInput, setShowInput] = useState<boolean>(false);
   const [isEditing, setIsEditing] = useState<boolean>(false);
+  const [provider, setProvider] = useState<Provider>(() => {
+    const stored = sessionStorage.getItem(PROVIDER_STORAGE_KEY);
+    if (stored && (stored === 'openai' || stored === 'groq' || stored === 'gemini')) {
+      return stored as Provider;
+    }
+    return 'groq';
+  });
 
   useEffect(() => {
     const savedKey = sessionStorage.getItem(API_KEY_STORAGE_KEY);
@@ -18,6 +60,13 @@ export function ApiKeyInput({ onApiKeyChange }: ApiKeyInputProps) {
       onApiKeyChange(true);
     }
   }, [onApiKeyChange]);
+
+  // プロバイダー変更時にonProviderChangeを初回呼び出し
+  useEffect(() => {
+    if (onProviderChange) {
+      onProviderChange(provider);
+    }
+  }, []);
 
   const maskApiKey = (key: string): string => {
     if (key.length <= 8) return '****';
@@ -51,7 +100,17 @@ export function ApiKeyInput({ onApiKeyChange }: ApiKeyInputProps) {
     }
   };
 
+  const handleProviderChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newProvider = e.target.value as Provider;
+    setProvider(newProvider);
+    sessionStorage.setItem(PROVIDER_STORAGE_KEY, newProvider);
+    if (onProviderChange) {
+      onProviderChange(newProvider);
+    }
+  };
+
   const hasStoredKey = sessionStorage.getItem(API_KEY_STORAGE_KEY);
+  const currentConfig = PROVIDER_CONFIG[provider];
 
   return (
     <div style={{ marginBottom: '1.5rem' }}>
@@ -80,8 +139,31 @@ export function ApiKeyInput({ onApiKeyChange }: ApiKeyInputProps) {
           >
             <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" />
           </svg>
+
+          {/* プロバイダー選択ドロップダウン */}
+          <select
+            value={provider}
+            onChange={handleProviderChange}
+            style={{
+              background: 'rgba(255, 255, 255, 0.05)',
+              border: '1px solid var(--color-border)',
+              borderRadius: '0.375rem',
+              padding: '0.35rem 0.5rem',
+              color: 'var(--color-text-primary)',
+              fontSize: '0.875rem',
+              cursor: 'pointer',
+              outline: 'none',
+            }}
+          >
+            {Object.entries(PROVIDER_CONFIG).map(([key, config]) => (
+              <option key={key} value={key}>
+                {config.name} ({config.modelInfo})
+              </option>
+            ))}
+          </select>
+
           <span style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>
-            Groq API Key:
+            API Key:
           </span>
         </div>
 
@@ -138,7 +220,7 @@ export function ApiKeyInput({ onApiKeyChange }: ApiKeyInputProps) {
               value={apiKey}
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
-              placeholder="gsk_..."
+              placeholder={currentConfig.placeholder}
               autoFocus
               style={{
                 flex: 1,
@@ -223,14 +305,14 @@ export function ApiKeyInput({ onApiKeyChange }: ApiKeyInputProps) {
         }}>
           <p style={{ margin: '0 0 0.25rem' }}>
             <a
-              href="https://console.groq.com/keys"
+              href={currentConfig.url}
               target="_blank"
               rel="noopener noreferrer"
               style={{ color: 'var(--color-accent)' }}
             >
-              Groq Console
+              {currentConfig.name} Console
             </a>
-            {' '}で無料のAPIキーを取得できます（クレジットカード不要）
+            {' '}でAPIキーを取得できます
           </p>
           <p style={{ margin: 0, opacity: 0.8 }}>
             手順: アカウント作成 → API Keys → Create API Key
@@ -243,4 +325,12 @@ export function ApiKeyInput({ onApiKeyChange }: ApiKeyInputProps) {
 
 export function getStoredApiKey(): string | null {
   return sessionStorage.getItem(API_KEY_STORAGE_KEY);
+}
+
+export function getStoredProvider(): Provider | null {
+  const stored = sessionStorage.getItem(PROVIDER_STORAGE_KEY);
+  if (stored && (stored === 'openai' || stored === 'groq' || stored === 'gemini')) {
+    return stored as Provider;
+  }
+  return null;
 }

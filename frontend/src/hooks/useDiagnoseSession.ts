@@ -68,10 +68,14 @@ interface DiagnoseV2ContinueResponse {
   result: DiagnoseV2Result | null
 }
 
+// プロバイダー型
+export type Provider = 'openai' | 'groq' | 'gemini'
+
 // フックのオプション
 export interface UseDiagnoseSessionOptions {
   baseUrl?: string
   apiKey?: string
+  provider?: Provider
   timeout?: number
 }
 
@@ -104,6 +108,7 @@ export const useDiagnoseSession = (
   const {
     baseUrl = DEFAULT_BASE_URL,
     apiKey,
+    provider,
     timeout = DEFAULT_TIMEOUT,
   } = options
 
@@ -142,6 +147,10 @@ export const useDiagnoseSession = (
         headers['X-API-Key'] = apiKey
       }
 
+      if (provider) {
+        headers['X-Provider'] = provider
+      }
+
       const response = await fetch(url, {
         method: 'POST',
         headers,
@@ -160,7 +169,7 @@ export const useDiagnoseSession = (
     } finally {
       clearTimeout(timeoutId)
     }
-  }, [apiKey, timeout])
+  }, [apiKey, provider, timeout])
 
   // セッション開始
   const startSession = useCallback(async (answers: InitialAnswers) => {

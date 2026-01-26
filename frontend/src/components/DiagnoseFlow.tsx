@@ -6,7 +6,7 @@
  */
 import { useCallback, useEffect } from 'react'
 import { useDiagnoseSession } from '../hooks/useDiagnoseSession'
-import type { InitialAnswers, FollowupAnswer, DiagnoseV2Result } from '../hooks/useDiagnoseSession'
+import type { InitialAnswers, FollowupAnswer, DiagnoseV2Result, Provider } from '../hooks/useDiagnoseSession'
 import { InitialQuestions } from './InitialQuestions'
 import { DynamicQuestions } from './DynamicQuestions'
 
@@ -15,6 +15,7 @@ interface DiagnoseFlowProps {
   onError?: (error: Error) => void
   baseUrl?: string
   apiKey?: string
+  provider?: Provider
 }
 
 type FlowPhase = 'initial' | 'followup' | 'loading' | 'complete' | 'error'
@@ -24,6 +25,7 @@ export const DiagnoseFlow: React.FC<DiagnoseFlowProps> = ({
   onError,
   baseUrl = '',
   apiKey,
+  provider,
 }) => {
   const {
     sessionId,
@@ -35,7 +37,7 @@ export const DiagnoseFlow: React.FC<DiagnoseFlowProps> = ({
     startSession,
     continueSession,
     reset,
-  } = useDiagnoseSession({ baseUrl, apiKey })
+  } = useDiagnoseSession({ baseUrl, apiKey, provider })
 
   // 現在のフェーズを決定
   const getCurrentPhase = useCallback((): FlowPhase => {
