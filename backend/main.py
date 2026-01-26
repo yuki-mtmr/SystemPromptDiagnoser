@@ -263,3 +263,267 @@ async def api_status(request: Request):
         "generation_mode": "llm" if has_key else "mock",
         "provider": provider if has_key else None
     }
+
+
+# =============================================================================
+# v2 API エンドポイント（動的診断フロー）
+# =============================================================================
+
+from schemas.diagnose_v2 import (
+    DiagnoseV2StartRequest,
+    DiagnoseV2StartResponse,
+    DiagnoseV2ContinueRequest,
+    DiagnoseV2ContinueResponse,
+    DiagnoseV2Result,
+    Question,
+    QuestionChoice,
+    UserProfile,
+    CognitiveProfile,
+    PromptVariant as PromptVariantV2,
+)
+from services.session_service import (
+    get_session_service,
+    SessionNotFoundError,
+    SessionExpiredError,
+)
+from services.llm_service_v2 import create_llm_service_v2, LLMTimeoutError
+
+
+@app.post("/api/v2/diagnose/start", response_model=DiagnoseV2StartResponse)
+async def diagnose_v2_start(request: Request, data: DiagnoseV2StartRequest):
+    """
+    v2診断を開始する。
+
+    初期回答を受け取り、セッションを作成し、動的質問を生成する。
+    LLMが利用可能な場合はLLMで質問を生成、そうでなければモックを使用。
+    """
+    api_key, provider = get_api_key_and_provider(request)
+    session_service = get_session_service()
+
+    # セッション作成
+    session_id = session_service.create_session()
+
+    # 初期回答をセッションに保存
+    session_service.update_session(session_id, {
+        "phase": 1,
+        "initial_answers": {
+            "purpose": data.initial_answers.purpose,
+            "autonomy": data.initial_answers.autonomy,
+        },
+        "followup_answers": [],
+        "followup_count": 0,
+    })
+
+    try:
+        if is_llm_available_with_key(api_key):
+            logger.info(f"v2 診断開始: LLM使用 ({provider})")
+            llm_service = create_llm_service_v2(api_key, provider=provider)
+            result = llm_service.generate_followup_questions(data.initial_answers)
+        else:
+            logger.info("v2 診断開始: モック使用")
+            llm_service = create_llm_service_v2("")
+            result = llm_service.generate_followup_questions_mock(data.initial_answers)
+
+        # 言語とフォローアップ質問をセッションに保存
+        session_service.update_session(session_id, {
+            "detected_language": result.get("detected_language", "en"),
+            "analysis_notes": result.get("analysis_notes", ""),
+        })
+
+        followup_questions = result.get("followup_questions", [])
+
+        # フォローアップ質問がない場合、最終出力を生成
+        if not followup_questions:
+            return await _generate_final_result(
+                session_id, session_service, api_key, provider
+            )
+
+        # フォローアップ質問をQuestion形式に変換
+        questions = _convert_to_questions(followup_questions)
+
+        return DiagnoseV2StartResponse(
+            session_id=session_id,
+            phase="followup",
+            followup_questions=questions,
+            result=None,
+        )
+
+    except Exception as e:
+        logger.error(f"v2 診断開始エラー: {type(e).__name__}: {str(e)[:100]}")
+        # エラー時はモックでフォールバック
+        llm_service = create_llm_service_v2("")
+        result = llm_service.generate_followup_questions_mock(data.initial_answers)
+
+        session_service.update_session(session_id, {
+            "detected_language": result.get("detected_language", "en"),
+        })
+
+        followup_questions = result.get("followup_questions", [])
+        if not followup_questions:
+            return await _generate_final_result(
+                session_id, session_service, api_key, provider
+            )
+
+        return DiagnoseV2StartResponse(
+            session_id=session_id,
+            phase="followup",
+            followup_questions=_convert_to_questions(followup_questions),
+            result=None,
+        )
+
+
+@app.post("/api/v2/diagnose/continue", response_model=DiagnoseV2ContinueResponse)
+async def diagnose_v2_continue(request: Request, data: DiagnoseV2ContinueRequest):
+    """
+    v2診断を継続する。
+
+    追加の回答を受け取り、さらに質問が必要か判断する。
+    必要なければ最終結果を生成して返す。
+    """
+    api_key, provider = get_api_key_and_provider(request)
+    session_service = get_session_service()
+
+    try:
+        session = session_service.get_session(data.session_id)
+    except SessionNotFoundError:
+        raise HTTPException(status_code=404, detail="セッションが見つかりません")
+    except SessionExpiredError:
+        raise HTTPException(status_code=404, detail="セッションの有効期限が切れています")
+
+    # 回答をセッションに保存
+    current_followup_answers = session.data.get("followup_answers", [])
+    for answer in data.answers:
+        current_followup_answers.append({
+            "question_id": answer.question_id,
+            "answer": answer.answer,
+        })
+
+    followup_count = session.data.get("followup_count", 0) + 1
+
+    session_service.update_session(data.session_id, {
+        "followup_answers": current_followup_answers,
+        "followup_count": followup_count,
+    })
+
+    # 最大2回のフォローアップ後は最終結果を生成
+    if followup_count >= 2:
+        return await _generate_final_result(
+            data.session_id, session_service, api_key, provider
+        )
+
+    # LLMで追加質問が必要か判断（今回はシンプルに最終結果へ）
+    # 将来的にはLLMで追加質問を生成することも可能
+    return await _generate_final_result(
+        data.session_id, session_service, api_key, provider
+    )
+
+
+async def _generate_final_result(
+    session_id: str,
+    session_service,
+    api_key: Optional[str],
+    provider: str,
+) -> DiagnoseV2StartResponse | DiagnoseV2ContinueResponse:
+    """最終結果を生成する内部関数"""
+    session = session_service.get_session(session_id)
+    session_data = session.data
+
+    all_answers = {
+        "initial": session_data.get("initial_answers", {}),
+        "followup": session_data.get("followup_answers", []),
+    }
+    detected_language = session_data.get("detected_language", "en")
+
+    try:
+        if is_llm_available_with_key(api_key):
+            logger.info(f"v2 最終結果生成: LLM使用 ({provider})")
+            llm_service = create_llm_service_v2(api_key, provider=provider)
+            result = llm_service.generate_final_output(all_answers, detected_language)
+            source = "llm"
+        else:
+            logger.info("v2 最終結果生成: モック使用")
+            llm_service = create_llm_service_v2("")
+            result = llm_service.generate_final_output_mock(all_answers, detected_language)
+            source = "mock"
+    except Exception as e:
+        logger.error(f"v2 最終結果生成エラー: {type(e).__name__}: {str(e)[:100]}")
+        llm_service = create_llm_service_v2("")
+        result = llm_service.generate_final_output_mock(all_answers, detected_language)
+        source = "mock"
+
+    # セッションを更新
+    session_service.update_session(session_id, {"phase": "complete"})
+
+    # 認知プロファイルを構築（存在する場合）
+    cognitive_profile = None
+    if "cognitive_profile" in result["user_profile"] and result["user_profile"]["cognitive_profile"]:
+        cp = result["user_profile"]["cognitive_profile"]
+        cognitive_profile = CognitiveProfile(
+            thinking_pattern=cp["thinking_pattern"],
+            learning_type=cp["learning_type"],
+            detail_orientation=cp["detail_orientation"],
+            preferred_structure=cp["preferred_structure"],
+            use_tables=cp.get("use_tables", False),
+            formatting_rules=cp.get("formatting_rules", {}),
+            avoid_patterns=cp.get("avoid_patterns", []),
+            persona_summary=cp["persona_summary"],
+        )
+
+    # 結果を構築
+    diagnose_result = DiagnoseV2Result(
+        user_profile=UserProfile(
+            primary_use_case=result["user_profile"]["primary_use_case"],
+            autonomy_preference=result["user_profile"]["autonomy_preference"],
+            communication_style=result["user_profile"]["communication_style"],
+            key_traits=result["user_profile"]["key_traits"],
+            detected_needs=result["user_profile"]["detected_needs"],
+            cognitive_profile=cognitive_profile,
+        ),
+        recommended_style=result["recommended_style"],
+        recommendation_reason=result["recommendation_reason"],
+        variants=[
+            PromptVariantV2(
+                style=v["style"],
+                name=v["name"],
+                prompt=v["prompt"],
+                description=v["description"],
+            )
+            for v in result["variants"]
+        ],
+        source=source,
+    )
+
+    # レスポンスクラスを判断（startから呼ばれたかcontinueから呼ばれたか）
+    return DiagnoseV2ContinueResponse(
+        session_id=session_id,
+        phase="complete",
+        followup_questions=None,
+        result=diagnose_result,
+    )
+
+
+def _convert_to_questions(followup_questions: list[dict]) -> list[Question]:
+    """フォローアップ質問をQuestion形式に変換"""
+    questions = []
+    for q in followup_questions:
+        choices = None
+        if q.get("type") == "choice" and q.get("choices"):
+            choices = [
+                QuestionChoice(
+                    value=c.get("value", c.get("label", "")),
+                    label=c.get("label", ""),
+                    description=c.get("description"),
+                )
+                for c in q["choices"]
+            ]
+
+        questions.append(Question(
+            id=q["id"],
+            question=q["question"],
+            type=q.get("type", "freeform"),
+            placeholder=q.get("placeholder"),
+            suggestions=q.get("suggestions"),
+            choices=choices,
+        ))
+
+    return questions
