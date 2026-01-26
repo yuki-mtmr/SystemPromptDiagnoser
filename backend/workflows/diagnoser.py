@@ -3,10 +3,14 @@ LangGraph workflow for system prompt diagnosis and generation.
 
 This workflow processes user preferences and generates three variants of
 system prompts (Short, Standard, Strict) using Gemini LLM.
+
+Supports both synchronous and asynchronous execution with parallel LLM calls.
 """
 
+import asyncio
 from typing import TypedDict, Optional, Annotated
 from operator import add
+from concurrent.futures import ThreadPoolExecutor
 from langgraph.graph import StateGraph, END
 
 from services.llm_service import create_llm_service, LLMService
@@ -61,50 +65,16 @@ class DiagnoserWorkflow:
         Args:
             api_key: Google Gemini API key (passed per-request)
         """
+        self.api_key = api_key
         self.llm_service = create_llm_service(api_key)
-        self.graph = self._build_graph()
-
-    def _build_graph(self) -> StateGraph:
-        """Build the LangGraph workflow."""
-        workflow = StateGraph(DiagnoseState)
-
-        # Add nodes
-        workflow.add_node("analyze_preferences", self._analyze_preferences)
-        workflow.add_node("generate_short", self._generate_short_prompt)
-        workflow.add_node("generate_standard", self._generate_standard_prompt)
-        workflow.add_node("generate_strict", self._generate_strict_prompt)
-        workflow.add_node("determine_recommendation", self._determine_recommendation)
-
-        # Define edges
-        workflow.set_entry_point("analyze_preferences")
-
-        # After analysis, generate all three variants in parallel concept
-        # (LangGraph will execute sequentially but we structure as parallel)
-        workflow.add_edge("analyze_preferences", "generate_short")
-        workflow.add_edge("generate_short", "generate_standard")
-        workflow.add_edge("generate_standard", "generate_strict")
-        workflow.add_edge("generate_strict", "determine_recommendation")
-        workflow.add_edge("determine_recommendation", END)
-
-        return workflow.compile()
-
-    def _analyze_preferences(self, state: DiagnoseState) -> dict:
-        """Analyze user preferences and enrich with context."""
-        input_data = state["input"]
-
-        return {
-            "use_case_context": get_use_case_context(input_data["use_case"]),
-            "tone_modifier": get_tone_modifier(input_data["tone"]),
-            "strictness_behavior": get_strictness_behavior(input_data["strictness"])
-        }
+        self._use_llm = True  # Track if LLM was used
 
     def _generate_prompt_variant(
         self,
-        state: DiagnoseState,
+        input_data: DiagnoseInput,
         style: str
     ) -> PromptVariant:
         """Generate a prompt variant using the LLM."""
-        input_data = state["input"]
         template = PROMPT_TEMPLATES[style]
 
         try:
@@ -118,6 +88,7 @@ class DiagnoserWorkflow:
             )
         except Exception as e:
             # Fallback to a basic prompt on error
+            self._use_llm = False
             prompt = self._generate_fallback_prompt(input_data, style)
 
         return PromptVariant(
@@ -183,55 +154,73 @@ Behavioral Rules:
 11. Request clarification for ambiguous queries.
 12. Structure responses clearly when appropriate."""
 
-    def _generate_short_prompt(self, state: DiagnoseState) -> dict:
-        """Generate the short variant."""
-        variant = self._generate_prompt_variant(state, "short")
-        return {"variants": [variant]}
-
-    def _generate_standard_prompt(self, state: DiagnoseState) -> dict:
-        """Generate the standard variant."""
-        variant = self._generate_prompt_variant(state, "standard")
-        return {"variants": [variant]}
-
-    def _generate_strict_prompt(self, state: DiagnoseState) -> dict:
-        """Generate the strict variant."""
-        variant = self._generate_prompt_variant(state, "strict")
-        return {"variants": [variant]}
-
-    def _determine_recommendation(self, state: DiagnoseState) -> dict:
+    def _determine_recommendation(self, input_data: DiagnoseInput) -> str:
         """Determine which style to recommend based on preferences."""
-        input_data = state["input"]
-
-        # Logic to determine recommended style
         if input_data["response_length"] == "short":
-            recommended = "short"
+            return "short"
         elif input_data["strictness"] == "strict" or input_data["response_length"] == "detailed":
-            recommended = "strict"
+            return "strict"
         else:
-            recommended = "standard"
-
-        return {"recommended_style": recommended}
+            return "standard"
 
     def run(self, input_data: DiagnoseInput) -> dict:
-        """Run the diagnosis workflow."""
-        initial_state: DiagnoseState = {
-            "input": input_data,
-            "use_case_context": {},
-            "tone_modifier": {},
-            "strictness_behavior": {},
-            "variants": [],
-            "recommended_style": "standard",
-            "error": None
-        }
+        """
+        Run the diagnosis workflow synchronously.
+        Uses ThreadPoolExecutor for parallel LLM calls.
+        """
+        self._use_llm = True
+        styles = ["short", "standard", "strict"]
 
-        result = self.graph.invoke(initial_state)
+        # 並列でLLM呼び出しを実行
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            futures = [
+                executor.submit(self._generate_prompt_variant, input_data, style)
+                for style in styles
+            ]
+            variants = [f.result() for f in futures]
+
+        recommended_style = self._determine_recommendation(input_data)
+
         return {
-            "recommended_style": result["recommended_style"],
-            "variants": result["variants"]
+            "recommended_style": recommended_style,
+            "variants": variants,
+            "source": "llm" if self._use_llm else "mock"
+        }
+
+    async def run_async(self, input_data: DiagnoseInput) -> dict:
+        """
+        Run the diagnosis workflow asynchronously.
+        Uses asyncio for parallel LLM calls.
+        """
+        self._use_llm = True
+        styles = ["short", "standard", "strict"]
+
+        loop = asyncio.get_event_loop()
+
+        # 並列でLLM呼び出しを実行（asyncioで同期関数をラップ）
+        async def generate_variant_async(style: str) -> PromptVariant:
+            return await loop.run_in_executor(
+                None,
+                self._generate_prompt_variant,
+                input_data,
+                style
+            )
+
+        # 3つのプロンプト生成を並列実行
+        variants = await asyncio.gather(
+            *[generate_variant_async(style) for style in styles]
+        )
+
+        recommended_style = self._determine_recommendation(input_data)
+
+        return {
+            "recommended_style": recommended_style,
+            "variants": list(variants),
+            "source": "llm" if self._use_llm else "mock"
         }
 
 
-# Module-level function for easy import
+# Module-level function for easy import (synchronous)
 def run_diagnosis(
     strictness: str,
     response_length: str,
@@ -241,7 +230,7 @@ def run_diagnosis(
     additional_notes: Optional[str] = None
 ) -> dict:
     """
-    Run the diagnosis workflow with the given parameters.
+    Run the diagnosis workflow with the given parameters (synchronous).
 
     Args:
         strictness: User's preferred strictness level
@@ -252,10 +241,45 @@ def run_diagnosis(
         additional_notes: Optional additional requirements
 
     Returns:
-        A dict with 'recommended_style' and 'variants' keys.
+        A dict with 'recommended_style', 'variants', and 'source' keys.
     """
     workflow = DiagnoserWorkflow(api_key)
     return workflow.run({
+        "strictness": strictness,
+        "response_length": response_length,
+        "tone": tone,
+        "use_case": use_case,
+        "additional_notes": additional_notes
+    })
+
+
+# Module-level function for easy import (asynchronous)
+async def run_diagnosis_async(
+    strictness: str,
+    response_length: str,
+    tone: str,
+    use_case: str,
+    api_key: str,
+    additional_notes: Optional[str] = None
+) -> dict:
+    """
+    Run the diagnosis workflow with the given parameters (asynchronous).
+
+    This version runs LLM calls in parallel for better performance.
+
+    Args:
+        strictness: User's preferred strictness level
+        response_length: Preferred response length
+        tone: Communication tone
+        use_case: Primary use case
+        api_key: Google Gemini API key (required)
+        additional_notes: Optional additional requirements
+
+    Returns:
+        A dict with 'recommended_style', 'variants', and 'source' keys.
+    """
+    workflow = DiagnoserWorkflow(api_key)
+    return await workflow.run_async({
         "strictness": strictness,
         "response_length": response_length,
         "tone": tone,

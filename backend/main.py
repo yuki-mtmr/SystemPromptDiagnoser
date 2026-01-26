@@ -146,11 +146,11 @@ Behavioral Guidelines:
     )
 
 
-def generate_llm_prompts(request: DiagnoseRequest, api_key: str) -> DiagnoseResponse:
-    """Generate prompts using the LangGraph workflow with Gemini LLM."""
-    from workflows.diagnoser import run_diagnosis
+async def generate_llm_prompts(request: DiagnoseRequest, api_key: str) -> DiagnoseResponse:
+    """Generate prompts using the LangGraph workflow with Gemini LLM (async, parallel)."""
+    from workflows.diagnoser import run_diagnosis_async
 
-    result = run_diagnosis(
+    result = await run_diagnosis_async(
         strictness=request.strictness,
         response_length=request.response_length,
         tone=request.tone,
@@ -161,7 +161,7 @@ def generate_llm_prompts(request: DiagnoseRequest, api_key: str) -> DiagnoseResp
 
     return DiagnoseResponse(
         recommended_style=result["recommended_style"],
-        source="llm",
+        source=result.get("source", "llm"),
         variants=[
             PromptVariant(**variant)
             for variant in result["variants"]
@@ -220,8 +220,8 @@ async def diagnose(request: Request, data: DiagnoseRequest):
 
     try:
         if is_llm_available_with_key(api_key):
-            logger.info("Using LLM-based generation")
-            return generate_llm_prompts(data, api_key)
+            logger.info("Using LLM-based generation (parallel execution)")
+            return await generate_llm_prompts(data, api_key)
         else:
             logger.info("API key not provided, using mock generation")
             return generate_mock_prompts(data)

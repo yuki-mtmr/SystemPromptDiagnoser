@@ -10,6 +10,7 @@ interface PromptVariant {
 export interface DiagnoseResult {
   recommended_style: string;
   variants: PromptVariant[];
+  source?: 'llm' | 'mock';
 }
 
 interface ResultsDisplayProps {
@@ -48,6 +49,23 @@ export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ results, onReset
         <p style={{ color: 'var(--color-text-secondary)' }}>
           回答に基づいて、3種類のシステムプロンプトを生成しました。
         </p>
+        {results.source && (
+          <span
+            style={{
+              display: 'inline-block',
+              marginTop: '0.5rem',
+              padding: '0.25rem 0.75rem',
+              borderRadius: '9999px',
+              fontSize: '0.75rem',
+              fontWeight: 600,
+              background: results.source === 'llm' ? 'rgba(74, 222, 128, 0.2)' : 'rgba(234, 179, 8, 0.2)',
+              color: results.source === 'llm' ? '#4ade80' : '#eab308',
+              border: `1px solid ${results.source === 'llm' ? 'rgba(74, 222, 128, 0.4)' : 'rgba(234, 179, 8, 0.4)'}`,
+            }}
+          >
+            {results.source === 'llm' ? '🤖 LLM生成' : '📋 モック'}
+          </span>
+        )}
       </div>
 
       {/* Style selector tabs */}

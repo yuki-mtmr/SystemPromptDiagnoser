@@ -1,20 +1,30 @@
 from typing import Optional
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
 
+class LLMTimeoutError(Exception):
+    """Exception raised when LLM call times out."""
+    pass
+
+
 class LLMService:
     """Service for interacting with Gemini LLM via LangChain."""
 
-    def __init__(self, api_key: str):
+    DEFAULT_TIMEOUT = 20  # 20秒
+
+    def __init__(self, api_key: str, timeout: int = DEFAULT_TIMEOUT):
         """
         Initialize LLM service with the provided API key.
 
         Args:
             api_key: Google Gemini API key (passed at runtime, not from env)
+            timeout: Timeout in seconds for LLM calls (default: 20)
         """
         self.api_key = api_key
+        self.timeout = timeout
         self._llm: Optional[ChatGoogleGenerativeAI] = None
 
     @property
@@ -36,7 +46,7 @@ class LLMService:
             )
         return self._llm
 
-    def generate_system_prompt(
+    def _generate_prompt_internal(
         self,
         strictness: str,
         response_length: str,
@@ -45,20 +55,7 @@ class LLMService:
         style: str,
         additional_notes: Optional[str] = None
     ) -> str:
-        """
-        Generate a customized system prompt based on user preferences.
-
-        Args:
-            strictness: User's preferred strictness level (flexible, strict, creative)
-            response_length: Preferred response length (short, standard, detailed)
-            tone: Communication tone (formal, casual, technical)
-            use_case: Primary use case (coding, writing, research, general)
-            style: Prompt style to generate (short, standard, strict)
-            additional_notes: Optional additional requirements from user
-
-        Returns:
-            Generated system prompt string
-        """
+        """Internal method to generate prompt (called with timeout wrapper)."""
         style_instructions = {
             "short": "Create a very concise system prompt (2-3 sentences max) that captures the essence of the requirements.",
             "standard": "Create a balanced system prompt with clear guidelines (4-6 bullet points or numbered items).",
@@ -134,12 +131,64 @@ The prompt should be practical, clear, and immediately usable.""")
 
         return result.strip()
 
+    def generate_system_prompt(
+        self,
+        strictness: str,
+        response_length: str,
+        tone: str,
+        use_case: str,
+        style: str,
+        additional_notes: Optional[str] = None
+    ) -> str:
+        """
+        Generate a customized system prompt based on user preferences.
 
-def create_llm_service(api_key: str) -> LLMService:
+        Args:
+            strictness: User's preferred strictness level (flexible, strict, creative)
+            response_length: Preferred response length (short, standard, detailed)
+            tone: Communication tone (formal, casual, technical)
+            use_case: Primary use case (coding, writing, research, general)
+            style: Prompt style to generate (short, standard, strict)
+            additional_notes: Optional additional requirements from user
+
+        Returns:
+            Generated system prompt string
+
+        Raises:
+            LLMTimeoutError: If the LLM call times out
+        """
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(
+                self._generate_prompt_internal,
+                strictness,
+                response_length,
+                tone,
+                use_case,
+                style,
+                additional_notes
+            )
+
+            try:
+                return future.result(timeout=self.timeout)
+            except FuturesTimeoutError:
+                raise LLMTimeoutError(
+                    f"LLM呼び出しが{self.timeout}秒でタイムアウトしました。"
+                    "サーバーが混雑している可能性があります。"
+                )
+
+
+def create_llm_service(api_key: str, timeout: int = LLMService.DEFAULT_TIMEOUT) -> LLMService:
     """
     Create a new LLM service instance with the provided API key.
 
     This function creates a fresh instance each time to support
     per-request API keys from users.
+
+    Args:
+        api_key: Google Gemini API key
+        timeout: Timeout in seconds for LLM calls (default: 20)
+
+    Returns:
+        LLMService instance
     """
-    return LLMService(api_key)
+    return LLMService(api_key, timeout=timeout)

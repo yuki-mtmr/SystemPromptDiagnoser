@@ -4,15 +4,26 @@ import { Footer } from './components/Footer';
 import { Questionnaire, type DiagnoseAnswers } from './components/Questionnaire';
 import { ResultsDisplay, type DiagnoseResult } from './components/ResultsDisplay';
 import { ApiKeyInput, getStoredApiKey } from './components/ApiKeyInput';
+import { useLoadingProgress } from './hooks/useLoadingProgress';
+import { useFetchWithTimeout } from './hooks/useFetchWithTimeout';
 import './App.css';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8001';
+const REQUEST_TIMEOUT = 60000; // 60秒
 
 function App() {
   const [view, setView] = useState<'questionnaire' | 'loading' | 'results' | 'error'>('questionnaire');
   const [results, setResults] = useState<DiagnoseResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [hasApiKey, setHasApiKey] = useState<boolean>(!!getStoredApiKey());
+
+  // プログレス表示フック
+  const { message: loadingMessage } = useLoadingProgress(view === 'loading');
+
+  // タイムアウト付きfetchフック
+  const { fetchWithTimeout } = useFetchWithTimeout<DiagnoseResult>({
+    timeout: REQUEST_TIMEOUT,
+  });
 
   const handleApiKeyChange = useCallback((hasKey: boolean) => {
     setHasApiKey(hasKey);
@@ -24,31 +35,27 @@ function App() {
 
     const apiKey = getStoredApiKey();
 
-    try {
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
 
-      if (apiKey) {
-        headers['X-API-Key'] = apiKey;
-      }
+    if (apiKey) {
+      headers['X-API-Key'] = apiKey;
+    }
 
-      const response = await fetch(`${API_BASE_URL}/api/diagnose`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(answers),
-      });
+    const data = await fetchWithTimeout(`${API_BASE_URL}/api/diagnose`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(answers),
+    });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || `診断に失敗しました: ${response.status}`);
-      }
-
-      const data: DiagnoseResult = await response.json();
+    if (data) {
       setResults(data);
       setView('results');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '予期しないエラーが発生しました');
+    } else {
+      // fetchWithTimeoutがnullを返した場合、内部でエラーが発生している
+      // エラーはフックの状態で管理されているが、UIで表示するためにここで設定
+      setError('診断に失敗しました。しばらく経ってから再度お試しください。');
       setView('error');
     }
   };
@@ -107,7 +114,12 @@ function App() {
                 animation: 'spin 1s linear infinite'
               }} />
             </div>
-            <p style={{ color: 'var(--color-text-secondary)' }}>診断中...</p>
+            <p style={{ color: 'var(--color-text-secondary)', fontSize: '1.125rem', marginBottom: '0.5rem' }}>
+              {loadingMessage}
+            </p>
+            <p style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem', opacity: 0.7 }}>
+              初回アクセス時はサーバー起動に時間がかかる場合があります
+            </p>
             <style>{`
               @keyframes spin {
                 to { transform: rotate(360deg); }
