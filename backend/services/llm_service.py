@@ -1,0 +1,145 @@
+from typing import Optional
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+
+
+class LLMService:
+    """Service for interacting with Gemini LLM via LangChain."""
+
+    def __init__(self, api_key: str):
+        """
+        Initialize LLM service with the provided API key.
+
+        Args:
+            api_key: Google Gemini API key (passed at runtime, not from env)
+        """
+        self.api_key = api_key
+        self._llm: Optional[ChatGoogleGenerativeAI] = None
+
+    @property
+    def is_available(self) -> bool:
+        """Check if the LLM service is configured and available."""
+        return self.api_key is not None and len(self.api_key) > 0
+
+    @property
+    def llm(self) -> ChatGoogleGenerativeAI:
+        """Get or create the LLM instance."""
+        if self._llm is None:
+            if not self.is_available:
+                raise ValueError("API key is not configured")
+            self._llm = ChatGoogleGenerativeAI(
+                model="gemini-2.0-flash",
+                google_api_key=self.api_key,
+                temperature=0.7,
+                max_output_tokens=2048
+            )
+        return self._llm
+
+    def generate_system_prompt(
+        self,
+        strictness: str,
+        response_length: str,
+        tone: str,
+        use_case: str,
+        style: str,
+        additional_notes: Optional[str] = None
+    ) -> str:
+        """
+        Generate a customized system prompt based on user preferences.
+
+        Args:
+            strictness: User's preferred strictness level (flexible, strict, creative)
+            response_length: Preferred response length (short, standard, detailed)
+            tone: Communication tone (formal, casual, technical)
+            use_case: Primary use case (coding, writing, research, general)
+            style: Prompt style to generate (short, standard, strict)
+            additional_notes: Optional additional requirements from user
+
+        Returns:
+            Generated system prompt string
+        """
+        style_instructions = {
+            "short": "Create a very concise system prompt (2-3 sentences max) that captures the essence of the requirements.",
+            "standard": "Create a balanced system prompt with clear guidelines (4-6 bullet points or numbered items).",
+            "strict": "Create a comprehensive, detailed system prompt with explicit rules and behavioral guidelines (8-12 points covering all aspects)."
+        }
+
+        tone_descriptions = {
+            "formal": "professional and business-appropriate",
+            "casual": "friendly and conversational",
+            "technical": "precise with technical terminology"
+        }
+
+        use_case_contexts = {
+            "coding": "software development, programming, and technical problem-solving",
+            "writing": "content creation, copywriting, and creative writing",
+            "research": "information gathering, analysis, and synthesis",
+            "general": "general-purpose assistance across various domains"
+        }
+
+        strictness_behaviors = {
+            "flexible": "adaptable and willing to explore different approaches",
+            "strict": "precise, rule-following, and focused on accuracy",
+            "creative": "innovative, exploratory, and open to unconventional solutions"
+        }
+
+        length_instructions = {
+            "short": "Keep responses concise and to the point",
+            "standard": "Provide balanced responses with appropriate detail",
+            "detailed": "Provide comprehensive, thorough explanations"
+        }
+
+        prompt_template = ChatPromptTemplate.from_messages([
+            ("system", """You are an expert at crafting effective AI system prompts.
+Your task is to create a customized system prompt based on user preferences.
+Generate ONLY the system prompt text itself, without any explanations or metadata.
+Write the prompt in English, as it will be used with AI assistants."""),
+            ("human", """Create a system prompt with the following characteristics:
+
+**Style Level**: {style}
+{style_instruction}
+
+**User Preferences**:
+- Communication Tone: {tone} ({tone_description})
+- Primary Use Case: {use_case} ({use_case_context})
+- Behavioral Style: {strictness} ({strictness_behavior})
+- Response Length Preference: {response_length} ({length_instruction})
+
+{additional_notes_section}
+
+Generate a well-structured system prompt that incorporates all these preferences.
+The prompt should be practical, clear, and immediately usable.""")
+        ])
+
+        additional_notes_section = ""
+        if additional_notes and additional_notes.strip():
+            additional_notes_section = f"**Additional User Requirements**:\n{additional_notes}"
+
+        chain = prompt_template | self.llm | StrOutputParser()
+
+        result = chain.invoke({
+            "style": style,
+            "style_instruction": style_instructions.get(style, style_instructions["standard"]),
+            "tone": tone,
+            "tone_description": tone_descriptions.get(tone, "clear and professional"),
+            "use_case": use_case,
+            "use_case_context": use_case_contexts.get(use_case, "general assistance"),
+            "strictness": strictness,
+            "strictness_behavior": strictness_behaviors.get(strictness, "balanced"),
+            "response_length": response_length,
+            "length_instruction": length_instructions.get(response_length, "balanced responses"),
+            "additional_notes_section": additional_notes_section
+        })
+
+        return result.strip()
+
+
+def create_llm_service(api_key: str) -> LLMService:
+    """
+    Create a new LLM service instance with the provided API key.
+
+    This function creates a fresh instance each time to support
+    per-request API keys from users.
+    """
+    return LLMService(api_key)

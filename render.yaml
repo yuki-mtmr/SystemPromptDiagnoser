@@ -1,0 +1,19 @@
+# Render Blueprint for SystemPromptDiagnoser Backend
+# https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: system-prompt-diagnoser-api
+    runtime: python
+    region: singapore  # Closest to Japan
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11"
+      - key: ENV
+        value: production
+    # Note: No GEMINI_API_KEY needed - users provide their own via X-API-Key header
