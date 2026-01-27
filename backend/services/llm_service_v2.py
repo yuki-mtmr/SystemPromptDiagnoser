@@ -360,12 +360,20 @@ class LLMServiceV2:
         # ideal_interaction → コミュニケーショントーン（persona_summaryに反映）
         ideal_interaction = initial.get("ideal_interaction")
 
-        # formatting_rules（detail_orientationに基づく）
-        formatting_rules = self._get_formatting_rules(base["detail_orientation"])
-
         # persona_summary生成
         persona_summary = self._generate_persona_summary(
             base, ideal_interaction, detected_language
+        )
+
+        # formatting_principles（認知特性に基づく原則リスト）
+        profile_for_principles = {
+            "thinking_pattern": base["thinking_pattern"],
+            "learning_type": base["learning_type"],
+            "detail_orientation": base["detail_orientation"],
+            "preferred_structure": base["preferred_structure"],
+        }
+        formatting_principles = self._get_formatting_principles(
+            profile_for_principles, detected_language
         )
 
         return {
@@ -374,7 +382,7 @@ class LLMServiceV2:
             "detail_orientation": base["detail_orientation"],
             "preferred_structure": base["preferred_structure"],
             "use_tables": base["use_tables"],
-            "formatting_rules": formatting_rules,
+            "formatting_principles": formatting_principles,
             "avoid_patterns": avoid_patterns,
             "persona_summary": persona_summary,
         }
@@ -432,26 +440,113 @@ class LLMServiceV2:
             detected_language, defaults["collaborative"]["en"]
         )
 
-    def _get_formatting_rules(self, detail_orientation: str) -> dict[str, str]:
-        """detail_orientationに基づいてformatting_rulesを決定"""
-        rules = {
-            "high": {
-                "paragraph_length": "80-120語/段落",
-                "heading_length": "10-20トークン",
-                "list_items": "3-7項目",
-            },
-            "medium": {
-                "paragraph_length": "60-100語/段落",
-                "heading_length": "10-15トークン",
-                "list_items": "3-5項目",
-            },
-            "low": {
-                "paragraph_length": "40-80語/段落",
-                "heading_length": "5-10トークン",
-                "list_items": "2-4項目",
-            },
-        }
-        return rules.get(detail_orientation, rules["medium"])
+    def _get_formatting_principles(
+        self,
+        profile: dict[str, Any],
+        detected_language: str,
+    ) -> list[str]:
+        """認知特性から原則ベースのガイドラインを生成"""
+        thinking = profile.get("thinking_pattern", "hybrid")
+        detail = profile.get("detail_orientation", "medium")
+        structure = profile.get("preferred_structure", "hierarchical")
+        learning = profile.get("learning_type", "visual_text")
+
+        if detected_language == "ja":
+            return self._get_formatting_principles_ja(thinking, detail, structure, learning)
+        else:
+            return self._get_formatting_principles_en(thinking, detail, structure, learning)
+
+    def _get_formatting_principles_ja(
+        self,
+        thinking: str,
+        detail: str,
+        structure: str,
+        learning: str,
+    ) -> list[str]:
+        """日本語の原則リストを生成"""
+        principles = []
+
+        # 思考パターンに基づく原則
+        if thinking == "structural":
+            principles.append("全体構造（マクロ）から詳細（ミクロ）へ順に説明")
+            principles.append("階層構造・関係性・位置づけを明確にする")
+        elif thinking == "fluid":
+            principles.append("文脈と流れを重視し、自然な説明順序で展開")
+            principles.append("具体例から一般化へ帰納的に説明")
+        else:  # hybrid
+            principles.append("状況に応じて全体像と具体例を使い分ける")
+
+        # 詳細志向に基づく原則
+        if detail == "high":
+            principles.append("網羅的な情報を段階的に提示")
+            principles.append("長文では適宜小結論を挟む")
+        elif detail == "low":
+            principles.append("核心的情報に絞り、簡潔に")
+            principles.append("詳細は追加質問を待って展開")
+        else:  # medium
+            principles.append("バランスの取れた情報量で要点を明確に")
+
+        # 構造の好みに基づく原則
+        if structure == "hierarchical":
+            principles.append("箇条書き・表・階層構造を活用して整理")
+        elif structure == "flat":
+            principles.append("フラットな箇条書きでシンプルに")
+        else:  # contextual
+            principles.append("文脈に応じた柔軟な構造で")
+
+        # 学習タイプに基づく原則
+        if learning == "kinesthetic":
+            principles.append("実践的な例やハンズオンを優先")
+        elif learning == "visual_diagram":
+            principles.append("図表やフローで視覚的に表現")
+
+        return principles
+
+    def _get_formatting_principles_en(
+        self,
+        thinking: str,
+        detail: str,
+        structure: str,
+        learning: str,
+    ) -> list[str]:
+        """英語の原則リストを生成"""
+        principles = []
+
+        # Thinking pattern principles
+        if thinking == "structural":
+            principles.append("Explain from overall structure (macro) to details (micro)")
+            principles.append("Clarify hierarchies, relationships, and positioning")
+        elif thinking == "fluid":
+            principles.append("Prioritize context and flow with natural explanation order")
+            principles.append("Explain inductively from examples to generalizations")
+        else:  # hybrid
+            principles.append("Flexibly use both overview and concrete examples")
+
+        # Detail orientation principles
+        if detail == "high":
+            principles.append("Present comprehensive information progressively")
+            principles.append("Include interim conclusions in long responses")
+        elif detail == "low":
+            principles.append("Focus on core information, keep it concise")
+            principles.append("Expand details only when asked")
+        else:  # medium
+            principles.append("Provide balanced information with clear key points")
+
+        # Structure preference principles
+        if structure == "hierarchical":
+            principles.append("Use bullet points, tables, and hierarchical structures")
+        elif structure == "flat":
+            principles.append("Use flat bullet points for simplicity")
+        else:  # contextual
+            principles.append("Adapt structure flexibly to context")
+
+        # Learning type principles
+        if learning == "kinesthetic":
+            principles.append("Prioritize practical examples and hands-on content")
+        elif learning == "visual_diagram":
+            principles.append("Express visually with diagrams and flowcharts")
+
+        return principles
 
     def _generate_persona_summary(
         self,
@@ -542,6 +637,24 @@ class LLMServiceV2:
         else:
             return "standard"
 
+    def _get_tone_guidance_ja(self, autonomy: str) -> str:
+        """自律性の好みに基づいてトーンガイダンスを生成（日本語）"""
+        tones = {
+            "obedient": "指示に忠実で的確なアシスタントとして対応。専門的かつ丁寧に。",
+            "collaborative": "対等なパートナーとして一緒に考える姿勢。提案や代替案を積極的に。",
+            "autonomous": "専門家として自律的に判断し、積極的に提案。簡潔で効率的なやり取りを。",
+        }
+        return tones.get(autonomy, tones["collaborative"])
+
+    def _get_tone_guidance_en(self, autonomy: str) -> str:
+        """自律性の好みに基づいてトーンガイダンスを生成（英語）"""
+        tones = {
+            "obedient": "Respond as a precise and reliable assistant. Professional and thorough.",
+            "collaborative": "Act as an equal partner, thinking together. Actively offer suggestions and alternatives.",
+            "autonomous": "Make autonomous decisions as an expert. Keep interactions concise and efficient.",
+        }
+        return tones.get(autonomy, tones["collaborative"])
+
     def _generate_mock_ja(
         self,
         purpose: str,
@@ -549,45 +662,41 @@ class LLMServiceV2:
         recommended_style: str,
         cognitive_profile: dict,
     ) -> dict[str, Any]:
-        """日本語モック生成"""
+        """日本語モック生成（原則ベース）"""
         persona = cognitive_profile["persona_summary"]
         avoid = "、".join(cognitive_profile["avoid_patterns"])
-        rules = cognitive_profile["formatting_rules"]
+        principles = cognitive_profile["formatting_principles"]
 
-        short_prompt = f"""私は{persona}。
+        # 原則リストをフォーマット
+        principles_short = "\n".join(f"- {p}" for p in principles[:3])
+        principles_standard = "\n".join(f"- {p}" for p in principles[:5])
+        principles_full = "\n".join(f"- {p}" for p in principles)
 
-## 基本方針
-- {purpose}に関する質問に簡潔に回答
-- 要点を3つ以内にまとめる
+        # トーンガイダンスを生成
+        tone = self._get_tone_guidance_ja(autonomy)
+
+        short_prompt = f"""{persona}
+
+## 回答の原則
+{principles_short}
 - {avoid}は避ける"""
 
-        standard_prompt = f"""私は{persona}。
+        standard_prompt = f"""{persona}
 以下の原則で{purpose}をサポートしてください。
 
-## 情報構造化
-| 要素 | ルール |
-|------|--------|
-| 段落 | {rules.get("paragraph_length", "80-120語")} |
-| 見出し | {rules.get("heading_length", "10-20トークン")} |
-| 箇条書き | {rules.get("list_items", "3-7項目")} |
+## 回答の原則
+{principles_standard}
 
-## 認知特性
-- 思考パターン: {cognitive_profile["thinking_pattern"]}
-- 詳細志向: {cognitive_profile["detail_orientation"]}
+## トーン
+{tone}
 
 ## 回避事項
 {avoid}は避けてください。"""
 
-        strict_prompt = f"""私は{persona}。
-全体構造の整合性が取れたときに理解が成立する学習者として、以下のフォーマットで{purpose}に関する情報を構造化してください。
+        strict_prompt = f"""{persona}
 
-## 情報構造化の原則
-| 要素 | ルール |
-|------|--------|
-| 階層構造 | マクロ→メソ→ミクロの3層 |
-| 見出し | {rules.get("heading_length", "10-20トークン")}、「〜について」禁止 |
-| 段落 | {rules.get("paragraph_length", "80-120語")} |
-| 箇条書き | {rules.get("list_items", "3-7項目")}、論理順 |
+## 回答の原則
+{principles_full}
 
 ## 認知特性
 - 思考パターン: {cognitive_profile["thinking_pattern"]}型
@@ -595,22 +704,23 @@ class LLMServiceV2:
 - 詳細志向度: {cognitive_profile["detail_orientation"]}
 - 情報構造: {cognitive_profile["preferred_structure"]}構造を好む
 
-## 回答形式の要件
-1. 冒頭で結論・要点を述べる
-2. 根拠・詳細を階層的に展開
-3. 具体例は実践的なものを選ぶ
-4. コードを含む場合はコメントを付与
+## トーン・インタラクション
+{tone}
+
+## 回答形式の指針
+- 冒頭で結論・要点を述べる
+- 根拠・詳細を段階的に展開
+- 具体例は実践的なものを選ぶ
+- コードを含む場合は適宜コメントを付与
 
 ## 回避すべきパターン
 以下は私の認知特性に合わないため、避けてください：
 - {avoid}
-- 過度な絵文字・装飾
-- 曖昧な「〜かもしれません」表現
 
 ## 品質基準
 - 正確性: 不確実な情報には明示的に注記
 - 構造化: 視覚的に読み取りやすいフォーマット
-- 実践性: 即座に適用可能な具体例"""
+- 実践性: すぐに適用可能な具体例"""
 
         return {
             "user_profile": {
@@ -628,19 +738,19 @@ class LLMServiceV2:
                     "style": "short",
                     "name": "ショート (Short)",
                     "prompt": short_prompt,
-                    "description": "ペルソナ宣言と最小限のルールを含む簡潔なプロンプト",
+                    "description": "ペルソナ宣言と核心的な原則のみを含む簡潔なプロンプト",
                 },
                 {
                     "style": "standard",
                     "name": "スタンダード (Standard)",
                     "prompt": standard_prompt,
-                    "description": "認知特性とフォーマットルールを含むバランスの取れたプロンプト",
+                    "description": "認知特性に基づく原則とトーン指針を含むバランスの取れたプロンプト",
                 },
                 {
                     "style": "strict",
                     "name": "ストリクト (Strict)",
                     "prompt": strict_prompt,
-                    "description": "完全な認知プロファイルと詳細な構造化ルールを含むプロンプト",
+                    "description": "完全な認知プロファイルと詳細な原則・品質基準を含むプロンプト",
                 },
             ],
         }
@@ -652,45 +762,41 @@ class LLMServiceV2:
         recommended_style: str,
         cognitive_profile: dict,
     ) -> dict[str, Any]:
-        """英語モック生成"""
+        """英語モック生成（原則ベース）"""
         persona = cognitive_profile["persona_summary"]
         avoid = ", ".join(cognitive_profile["avoid_patterns"])
-        rules = cognitive_profile["formatting_rules"]
+        principles = cognitive_profile["formatting_principles"]
 
-        short_prompt = f"""I am {persona.lower()}.
+        # Format principle lists
+        principles_short = "\n".join(f"- {p}" for p in principles[:3])
+        principles_standard = "\n".join(f"- {p}" for p in principles[:5])
+        principles_full = "\n".join(f"- {p}" for p in principles)
 
-## Core Principles
-- Respond concisely to questions about {purpose}
-- Summarize key points in 3 or fewer items
+        # Generate tone guidance
+        tone = self._get_tone_guidance_en(autonomy)
+
+        short_prompt = f"""{persona}
+
+## Response Principles
+{principles_short}
 - Avoid: {avoid}"""
 
-        standard_prompt = f"""I am {persona.lower()}.
+        standard_prompt = f"""{persona}
 Please support me with {purpose} following these principles.
 
-## Information Structuring
-| Element | Rule |
-|---------|------|
-| Paragraph | {rules.get("paragraph_length", "80-120 words")} |
-| Heading | {rules.get("heading_length", "10-20 tokens")} |
-| Lists | {rules.get("list_items", "3-7 items")} |
+## Response Principles
+{principles_standard}
 
-## Cognitive Traits
-- Thinking pattern: {cognitive_profile["thinking_pattern"]}
-- Detail orientation: {cognitive_profile["detail_orientation"]}
+## Tone
+{tone}
 
 ## Avoid
 Please avoid: {avoid}"""
 
-        strict_prompt = f"""I am {persona.lower()}.
-As a learner who achieves understanding when the overall structure is coherent, please structure information about {purpose} using the following format.
+        strict_prompt = f"""{persona}
 
-## Information Structuring Principles
-| Element | Rule |
-|---------|------|
-| Hierarchy | 3 layers: macro → meso → micro |
-| Headings | {rules.get("heading_length", "10-20 tokens")}, avoid "About..." |
-| Paragraphs | {rules.get("paragraph_length", "80-120 words")} |
-| Lists | {rules.get("list_items", "3-7 items")}, logical order |
+## Response Principles
+{principles_full}
 
 ## Cognitive Traits
 - Thinking pattern: {cognitive_profile["thinking_pattern"]} type
@@ -698,17 +804,18 @@ As a learner who achieves understanding when the overall structure is coherent, 
 - Detail orientation: {cognitive_profile["detail_orientation"]}
 - Preferred structure: {cognitive_profile["preferred_structure"]}
 
-## Response Format Requirements
-1. State conclusions/key points at the beginning
-2. Expand supporting details hierarchically
-3. Choose practical, applicable examples
-4. Include comments when providing code
+## Tone & Interaction
+{tone}
+
+## Response Guidelines
+- State conclusions and key points at the beginning
+- Expand supporting details progressively
+- Choose practical, applicable examples
+- Include comments when providing code
 
 ## Patterns to Avoid
 The following don't match my cognitive style, please avoid:
 - {avoid}
-- Excessive emojis or decorations
-- Vague expressions like "might be" or "perhaps"
 
 ## Quality Standards
 - Accuracy: Explicitly note uncertain information
@@ -731,19 +838,19 @@ The following don't match my cognitive style, please avoid:
                     "style": "short",
                     "name": "Short",
                     "prompt": short_prompt,
-                    "description": "Concise prompt with persona declaration and minimal rules",
+                    "description": "Concise prompt with persona and core principles only",
                 },
                 {
                     "style": "standard",
                     "name": "Standard",
                     "prompt": standard_prompt,
-                    "description": "Balanced prompt with cognitive traits and formatting rules",
+                    "description": "Balanced prompt with cognitive-based principles and tone guidance",
                 },
                 {
                     "style": "strict",
                     "name": "Strict",
                     "prompt": strict_prompt,
-                    "description": "Complete prompt with full cognitive profile and detailed structuring rules",
+                    "description": "Complete prompt with full cognitive profile and detailed principles",
                 },
             ],
         }

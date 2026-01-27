@@ -97,25 +97,25 @@ class TestCognitiveProfile:
             )
             assert profile.preferred_structure == ps
 
-    def test_formatting_rules_is_dict(self):
-        """formatting_rules は辞書型"""
+    def test_formatting_principles_is_list(self):
+        """formatting_principles はリスト型"""
         profile = CognitiveProfile(
             thinking_pattern="structural",
             learning_type="visual_text",
             detail_orientation="high",
             preferred_structure="hierarchical",
             persona_summary="test",
-            formatting_rules={
-                "paragraph_length": "80-120語",
-                "heading_length": "10-20トークン",
-                "list_items": "3-7項目",
-            },
+            formatting_principles=[
+                "全体構造（マクロ）から詳細（ミクロ）へ順に説明",
+                "箇条書き・表・階層構造を活用して整理",
+                "網羅的な情報を段階的に提示",
+            ],
         )
-        assert isinstance(profile.formatting_rules, dict)
-        assert profile.formatting_rules["paragraph_length"] == "80-120語"
+        assert isinstance(profile.formatting_principles, list)
+        assert "全体構造（マクロ）から詳細（ミクロ）へ順に説明" in profile.formatting_principles
 
-    def test_formatting_rules_is_optional_with_default(self):
-        """formatting_rules はオプショナルでデフォルトは空辞書"""
+    def test_formatting_principles_is_optional_with_default(self):
+        """formatting_principles はオプショナルでデフォルトは空リスト"""
         profile = CognitiveProfile(
             thinking_pattern="structural",
             learning_type="visual_text",
@@ -123,7 +123,7 @@ class TestCognitiveProfile:
             preferred_structure="hierarchical",
             persona_summary="test",
         )
-        assert profile.formatting_rules == {}
+        assert profile.formatting_principles == []
 
     def test_avoid_patterns_is_list(self):
         """avoid_patterns はリスト型"""

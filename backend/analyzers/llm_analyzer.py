@@ -44,26 +44,50 @@ class LLMPersonalityAnalyzer:
 
         return json.loads(response)
 
-    def _get_formatting_rules(self, detail_orientation: str) -> dict[str, str]:
-        """detail_orientationに基づいてformatting_rulesを生成"""
-        rules = {
-            "high": {
-                "paragraph_length": "80-120語/段落",
-                "heading_length": "10-20トークン",
-                "list_items": "3-7項目",
-            },
-            "medium": {
-                "paragraph_length": "60-100語/段落",
-                "heading_length": "10-15トークン",
-                "list_items": "3-5項目",
-            },
-            "low": {
-                "paragraph_length": "40-80語/段落",
-                "heading_length": "5-10トークン",
-                "list_items": "2-4項目",
-            },
-        }
-        return rules.get(detail_orientation, rules["medium"])
+    def _get_formatting_principles(self, parsed: dict[str, Any]) -> list[str]:
+        """認知特性から原則ベースのガイドラインを生成"""
+        thinking = parsed.get("thinking_pattern", "hybrid")
+        detail = parsed.get("detail_orientation", "medium")
+        structure = parsed.get("preferred_structure", "hierarchical")
+        learning = parsed.get("learning_type", "visual_text")
+
+        principles = []
+
+        # 思考パターンに基づく原則
+        if thinking == "structural":
+            principles.append("全体構造（マクロ）から詳細（ミクロ）へ順に説明")
+            principles.append("階層構造・関係性・位置づけを明確にする")
+        elif thinking == "fluid":
+            principles.append("文脈と流れを重視し、自然な説明順序で展開")
+            principles.append("具体例から一般化へ帰納的に説明")
+        else:  # hybrid
+            principles.append("状況に応じて全体像と具体例を使い分ける")
+
+        # 詳細志向に基づく原則
+        if detail == "high":
+            principles.append("網羅的な情報を段階的に提示")
+            principles.append("長文では適宜小結論を挟む")
+        elif detail == "low":
+            principles.append("核心的情報に絞り、簡潔に")
+            principles.append("詳細は追加質問を待って展開")
+        else:  # medium
+            principles.append("バランスの取れた情報量で要点を明確に")
+
+        # 構造の好みに基づく原則
+        if structure == "hierarchical":
+            principles.append("箇条書き・表・階層構造を活用して整理")
+        elif structure == "flat":
+            principles.append("フラットな箇条書きでシンプルに")
+        else:  # contextual
+            principles.append("文脈に応じた柔軟な構造で")
+
+        # 学習タイプに基づく原則
+        if learning == "kinesthetic":
+            principles.append("実践的な例やハンズオンを優先")
+        elif learning == "visual_diagram":
+            principles.append("図表やフローで視覚的に表現")
+
+        return principles
 
     def analyze(self, input: AnalysisInput) -> PersonalityTraits:
         """
@@ -100,7 +124,7 @@ class LLMPersonalityAnalyzer:
             use_tables=parsed.get("use_tables", False),
             avoid_patterns=parsed.get("avoid_patterns", []),
             persona_summary=parsed["persona_summary"],
-            formatting_rules=self._get_formatting_rules(parsed["detail_orientation"]),
+            formatting_principles=self._get_formatting_principles(parsed),
         )
 
     async def aanalyze(self, input: AnalysisInput) -> PersonalityTraits:
@@ -138,5 +162,5 @@ class LLMPersonalityAnalyzer:
             use_tables=parsed.get("use_tables", False),
             avoid_patterns=parsed.get("avoid_patterns", []),
             persona_summary=parsed["persona_summary"],
-            formatting_rules=self._get_formatting_rules(parsed["detail_orientation"]),
+            formatting_principles=self._get_formatting_principles(parsed),
         )

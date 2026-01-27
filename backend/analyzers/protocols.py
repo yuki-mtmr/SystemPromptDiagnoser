@@ -45,8 +45,8 @@ class PersonalityTraits(BaseModel):
         default_factory=list, description="回避すべきパターン"
     )
     persona_summary: str = Field(..., description="ペルソナの一文説明")
-    formatting_rules: dict[str, str] = Field(
-        default_factory=dict, description="フォーマットルール"
+    formatting_principles: list[str] = Field(
+        default_factory=list, description="認知特性に基づくフォーマット原則"
     )
 
 

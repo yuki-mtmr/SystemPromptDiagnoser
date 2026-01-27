@@ -459,7 +459,7 @@ async def _generate_final_result(
             detail_orientation=cp["detail_orientation"],
             preferred_structure=cp["preferred_structure"],
             use_tables=cp.get("use_tables", False),
-            formatting_rules=cp.get("formatting_rules", {}),
+            formatting_principles=cp.get("formatting_principles", []),
             avoid_patterns=cp.get("avoid_patterns", []),
             persona_summary=cp["persona_summary"],
         )

@@ -30,8 +30,8 @@ class CognitiveProfile(BaseModel):
     use_tables: bool = Field(
         default=False, description="表の使用好み"
     )
-    formatting_rules: dict[str, str] = Field(
-        default_factory=dict, description="具体的なフォーマットルール（数値制約など）"
+    formatting_principles: list[str] = Field(
+        default_factory=list, description="認知特性に基づくフォーマット原則"
     )
     avoid_patterns: list[str] = Field(
         default_factory=list, description="回避すべきパターン"

@@ -343,10 +343,11 @@ class TestGenerateFinalOutputV2:
                     "detail_orientation": "high",
                     "preferred_structure": "hierarchical",
                     "use_tables": True,
-                    "formatting_rules": {
-                        "paragraph_length": "80-120語",
-                        "heading_length": "10-20トークン"
-                    },
+                    "formatting_principles": [
+                        "全体構造（マクロ）から詳細（ミクロ）へ順に説明",
+                        "箇条書き・表・階層構造を活用して整理",
+                        "網羅的な情報を段階的に提示"
+                    ],
                     "avoid_patterns": ["過度な絵文字", "スラング"],
                     "persona_summary": "構造思考型の開発者"
                 }
