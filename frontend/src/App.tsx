@@ -37,7 +37,7 @@ function App() {
   const [provider, setProvider] = useState<Provider>(getStoredProvider() || 'groq');
 
   // プログレス表示フック
-  const { message: loadingMessage } = useLoadingProgress(view === 'loading');
+  const { message: loadingMessage, icon: loadingIcon, tip: loadingTip, progress: loadingProgress } = useLoadingProgress(view === 'loading');
 
   // タイムアウト付きfetchフック（v1用）
   const { fetchWithTimeout } = useFetchWithTimeout<DiagnoseResult>({
@@ -179,27 +179,89 @@ function App() {
         )}
 
         {view === 'loading' && (
-          <div className="glass-panel" style={{ padding: '3rem', maxWidth: '600px', margin: '2rem auto', textAlign: 'center' }}>
-            <div style={{ marginBottom: '1rem' }}>
-              <div className="spinner" style={{
-                width: '48px',
-                height: '48px',
-                border: '3px solid var(--color-border)',
-                borderTopColor: 'var(--color-accent)',
-                borderRadius: '50%',
-                margin: '0 auto',
-                animation: 'spin 1s linear infinite'
-              }} />
+          <div className="glass-panel" style={{
+            padding: '3rem',
+            maxWidth: '600px',
+            margin: '2rem auto',
+            textAlign: 'center',
+            background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(168, 85, 247, 0.1), rgba(236, 72, 153, 0.1))',
+            backgroundSize: '400% 400%',
+            animation: 'gradientShift 3s ease infinite'
+          }}>
+            {/* アニメーションアイコン */}
+            <div style={{ marginBottom: '1.5rem' }}>
+              <span style={{
+                fontSize: '4rem',
+                display: 'inline-block',
+                animation: 'pulse 2s ease-in-out infinite'
+              }}>
+                {loadingIcon}
+              </span>
             </div>
-            <p style={{ color: 'var(--color-text-secondary)', fontSize: '1.125rem', marginBottom: '0.5rem' }}>
-              {loadingMessage}
-            </p>
-            <p style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem', opacity: 0.7 }}>
+
+            {/* 進捗バー */}
+            <div style={{ marginBottom: '1.5rem' }}>
+              <div style={{
+                height: '8px',
+                background: 'rgba(255, 255, 255, 0.1)',
+                borderRadius: '4px',
+                overflow: 'hidden',
+                marginBottom: '0.75rem'
+              }}>
+                <div style={{
+                  height: '100%',
+                  background: 'linear-gradient(90deg, var(--color-accent), #a855f7)',
+                  borderRadius: '4px',
+                  transition: 'width 0.5s ease-out',
+                  width: `${loadingProgress}%`
+                }} />
+              </div>
+              <p style={{ color: 'var(--color-text-primary)', fontSize: '1.25rem', fontWeight: 500, marginBottom: '0.5rem' }}>
+                {loadingMessage}
+              </p>
+              <p style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>
+                {loadingProgress}%
+              </p>
+            </div>
+
+            {/* Tips表示 */}
+            <div style={{
+              marginTop: '1.5rem',
+              padding: '1rem',
+              background: 'rgba(255, 255, 255, 0.05)',
+              borderRadius: '0.5rem',
+              minHeight: '60px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
+              <p style={{
+                color: 'var(--color-text-secondary)',
+                fontSize: '0.95rem',
+                lineHeight: 1.5,
+                animation: 'fadeIn 0.5s ease-in-out'
+              }}>
+                💡 {loadingTip}
+              </p>
+            </div>
+
+            <p style={{ color: 'var(--color-text-secondary)', fontSize: '0.75rem', opacity: 0.7, marginTop: '1rem' }}>
               初回アクセス時はサーバー起動に時間がかかる場合があります
             </p>
+
             <style>{`
-              @keyframes spin {
-                to { transform: rotate(360deg); }
+              @keyframes pulse {
+                0%, 100% { opacity: 1; transform: scale(1); }
+                50% { opacity: 0.7; transform: scale(1.1); }
+              }
+              @keyframes gradientShift {
+                0% { background-position: 0% 50%; }
+                50% { background-position: 100% 50%; }
+                100% { background-position: 0% 50%; }
+              }
+              @keyframes fadeIn {
+                from { opacity: 0; transform: translateY(5px); }
+                to { opacity: 1; transform: translateY(0); }
               }
             `}</style>
           </div>

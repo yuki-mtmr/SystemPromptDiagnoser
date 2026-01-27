@@ -40,6 +40,22 @@ LANGUAGE_DETECTION_AND_QUESTION_GENERATION = """あなたはユーザーのAI利
 # プロファイル抽出とシステムプロンプト生成用プロンプト
 PROFILE_EXTRACTION_AND_PROMPT_GENERATION = """あなたはユーザーの認知特性を深く分析し、高度に個人化されたAIシステムプロンプトを生成する専門家です。
 
+## 【最重要】出力言語ルール
+検出された言語: {detected_language}
+
+【絶対遵守】以下の全ての出力は必ず {detected_language} で生成してください：
+- user_profile（全フィールド）
+- recommendation_reason
+- variants内のpromptとdescription
+
+{detected_language}が"ja"の場合：
+- 日本語のみで出力すること
+- 英語は一切使用禁止（技術用語やスタイル名を除く）
+- 自然で読みやすい日本語で記述すること
+
+{detected_language}が"en"の場合：
+- 英語のみで出力すること
+
 ## 指示
 全ての回答を分析し、以下を行ってください：
 
@@ -50,7 +66,7 @@ PROFILE_EXTRACTION_AND_PROMPT_GENERATION = """あなたはユーザーの認知�
 ## ユーザーの全回答
 {all_answers}
 
-## 検出された言語
+## 検出された言語（再確認）
 {detected_language}
 
 ## 出力形式（JSON）
@@ -175,7 +191,8 @@ PROFILE_EXTRACTION_AND_PROMPT_GENERATION = """あなたはユーザーの認知�
 ```
 
 ## 注意事項
-- 全ての出力はユーザーが使用した言語で生成してください
+- 【最重要】全ての出力（user_profile, recommendation_reason, variants）は検出された言語（{detected_language}）で生成してください
+- {detected_language}が"ja"の場合、プロンプト本文は必ず日本語で生成すること（英語禁止）
 - プロンプトはユーザーの認知特性を深く反映させてください
 - 汎用的・表面的なプロンプトは絶対に生成しないでください
 - recommended_style はユーザーの詳細志向度と自律性の好みから判断してください
